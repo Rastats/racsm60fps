@@ -47,7 +47,8 @@ Direct3D 11. The graphics backend does not change game logic.
 | `wordfix.py` | applies the C1 core and any word-level fix of `tools/runtime/fixes.py` (`DATA`) without a plugin |
 | `breakloop.py` | event loop: exact tick and new value of watched stores, plus a per-frame callback for frame-locked input |
 | `fire_rate.py` | fire cadence and first-shot latency in emulated time (`--mode hold` or `tap`) |
-| `abc_fire.py` | A/B/C runner: for each config, load the state, apply it, measure |
+| `abc_fire.py` | A/B/C runner: for each config, load the state, apply it, measure (`--rank` test aid) |
+| `move_probe.py` | walk / jump trajectories per config, frame-locked scripts, `--angles` scan |
 
 Typical session:
 

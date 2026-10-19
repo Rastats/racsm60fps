@@ -41,6 +41,7 @@ def main():
     ap.add_argument('--configs', nargs='+', required=True)
     ap.add_argument('--mode', choices=('hold', 'tap'), default='hold')
     ap.add_argument('--tap-vblanks', type=int, default=2)
+    ap.add_argument('--rank', type=int, help='TEST AID: weapon rank written after each state load (0 = V1)')
     ap.add_argument('--repeat', type=int, default=1)
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()
@@ -54,9 +55,10 @@ def main():
             with Debugger(a.port).connect() as d:
                 d.release_all()
                 applied = wordfix.apply(d, core, fixes)
+                rank_before = fire_rate.set_rank(d, a.rank) if a.rank is not None else None
                 rec = fire_rate.measure(d, a.seconds, mode=a.mode, tap_vblanks=a.tap_vblanks)
             row = {'config': config, 'repeat': rep, 'writes': len(applied['writes']),
-                   'jitRefresh': applied['jitRefresh'], **rec}
+                   'jitRefresh': applied['jitRefresh'], 'rank': a.rank, 'rankInState': rank_before, **rec}
             results.append(row)
             print(json.dumps({'config': config, 'repeat': rep,
                               **{k: row.get(k) for k in fire_rate.SUMMARY_KEYS[1:]}}), flush=True)

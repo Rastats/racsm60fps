@@ -31,10 +31,27 @@ from breakloop import BreakLoop, CPU_HZ  # noqa: E402
 
 VBLANK_TICKS = 3_703_700         # one 59.94 Hz vblank at 222 MHz (1001/60000 s)
 FRAME_30 = 1001 / 30000          # one A0 frame (two vblanks), seconds
-PLAYER, WEAPON_ID, AMMO_BASE, AMMO_STRIDE, STOCK = 0x337940, 0x998, 0x2AE95C, 0x58, 0x40
+PLAYER, WEAPON_ID, AMMO_BASE, AMMO_STRIDE, RANK, STOCK = 0x337940, 0x998, 0x2AE95C, 0x58, 0x3C, 0x40
 LEVEL01_SIZE = 0x46B900
 SUMMARY_KEYS = ('label', 'mode', 'weaponId', 'shots', 'shotsPerSecond', 'gapSecondsMedian',
                 'firstShotDelayVblanks', 'consumedAfterWindow', 'frames')
+
+
+def set_rank(d, rank):
+    """TEST AID: write the equipped weapon's rank (0 = V1) in the level copy (+0x3C,
+    layout in tools/runtime/inventory-aid.py). RAM only, after a state load; the
+    save copy and the savestate are untouched. The fire cadence follows at once
+    (OBSERVED 2026-10-19); models and other rank parameters are not reloaded."""
+    base = d.module('rcp1')['address']
+    wid = d.u32(base + PLAYER + WEAPON_ID)
+    addr = base + AMMO_BASE + wid * AMMO_STRIDE + RANK
+    d.pause()
+    try:
+        old = d.u32(addr)
+        d.write_u32(addr, rank, expect=old)
+    finally:
+        d.resume()
+    return old
 
 
 def measure(d, seconds, button='circle', mode='hold', tap_vblanks=2):

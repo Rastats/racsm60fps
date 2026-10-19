@@ -75,6 +75,24 @@ left out of the window). The gaps equal those of the earlier run
   (the published runs used a later save; a higher weapon level or another
   upgrade may fire faster). To settle with the owner.
 
+## Weapon rank (test aid; run `work/runs/abc-fire-005-rank3` and a scan)
+
+The savestate holds the Blaster at rank 0 (V1), XP 0, no mod, in both
+inventory copies. Writing the rank in the level copy (`--rank`, RAM only,
+layout from `tools/runtime/inventory-aid.py`) changes the cadence at once:
+
+| Rank | A0 gap (frames), shots/s | C1 shots/s | C1+weapondt |
+|---|---|---|---|
+| 0, 1, 2 | 15, 1.998 | 0.983 | = A0 |
+| 3, 4, 5, 6, 7 | 8, 3.746 | 1.998 | = A0 (rank 3) |
+
+Ranks 4 to 7 were measured in A0 only; C1 at ranks 1, 3, 5, 7. The C1 gap
+is 61 C1 frames at ranks 0-2 and 30 at ranks 3+, so uncorrected 60 FPS does
+not simply double the interval. `weapondt` gives A0 to the frame at both
+ranks tested. **UNKNOWN:** no rank gives the published 4.134 shots/s (or
+the published C1 1.842). Mods, or the wall-clock method of the published
+runs, remain possible; the owner's save would settle it.
+
 ## Correction (2026-10-19, same session)
 
 A first version of `fire_rate.py` read the stock at the break. A write

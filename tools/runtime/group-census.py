@@ -13,7 +13,10 @@ pg = importlib.util.module_from_spec(spec); spec.loader.exec_module(pg)
 
 def names():
     out = {}
-    for r in csv.DictReader((REPO/'research/v2/c1-residual-timing-atlas/c1-residual-timing-atlas.csv').open(encoding='utf-8-sig')):
+    atlas = REPO/'research/v2/c1-residual-timing-atlas/c1-residual-timing-atlas.csv'
+    if not atlas.exists():  # local research branch only: census still runs, classes print as '?'
+        return out
+    for r in csv.DictReader(atlas.open(encoding='utf-8-sig')):
         for it in r['update_functions'].split(';'):
             if it.startswith('M01:'): out[int(it[4:], 16)] = r['class_name']
     return out
