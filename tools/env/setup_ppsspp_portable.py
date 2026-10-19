@@ -61,7 +61,7 @@ FastMemoryAccess = True
 FunctionReplacements = True
 CPUSpeed = 0
 [Graphics]
-GraphicsBackend = 3 (VULKAN)
+GraphicsBackend = 2 (DIRECT3D11)
 FrameSkip = 0
 AutoFrameSkip = False
 InternalResolution = 2

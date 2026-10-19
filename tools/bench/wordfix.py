@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 from ppsspp_bench import Debugger, DEFAULT_PORT, BenchError  # noqa: E402
+from breakloop import is_branch  # noqa: E402
 
 
 def _load(name, rel):
@@ -40,21 +41,6 @@ pg = _load('pump_gate', 'tools/runtime/pump-gate.py')
 fx = _load('fixes', 'tools/runtime/fixes.py')
 DATA = fx.DATA
 LEVEL01_SIZE = pg.MODULE_SIZE
-
-
-def is_branch(word):
-    op = word >> 26
-    if op in (2, 3):                       # j, jal
-        return True
-    if op == 0 and (word & 0x3F) in (8, 9):  # jr, jalr
-        return True
-    if op in (4, 5, 6, 7, 20, 21, 22, 23):   # beq, bne, blez, bgtz (+ likely)
-        return True
-    if op == 1 and ((word >> 16) & 0x1F) in (0, 1, 2, 3, 16, 17, 18, 19):  # regimm branches
-        return True
-    if op == 17 and ((word >> 21) & 0x1F) == 8:  # bc1x
-        return True
-    return False
 
 
 def apply(d, core, fixes):

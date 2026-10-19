@@ -45,7 +45,8 @@ Direct3D 11. The graphics backend does not change game logic.
 | `advance_to_level.py` | presses through dialogs and cutscenes until a level module (by `rcp1` size) is resident |
 | `clock.py` | ticks per game frame, so the emulated frame rate and the CPU clock |
 | `wordfix.py` | applies the C1 core and any word-level fix of `tools/runtime/fixes.py` (`DATA`) without a plugin |
-| `fire_rate.py` | fire cadence in emulated time, using a memory breakpoint on the ammo stock |
+| `breakloop.py` | event loop: exact tick and new value of watched stores, plus a per-frame callback for frame-locked input |
+| `fire_rate.py` | fire cadence and first-shot latency in emulated time (`--mode hold` or `tap`) |
 | `abc_fire.py` | A/B/C runner: for each config, load the state, apply it, measure |
 
 Typical session:
@@ -77,7 +78,14 @@ while a polling loop ran (OBSERVED, and also noted in
 breakpoints instead. The CPU stops at the event, the `cpu.stepping` broadcast
 carries `ticks`, the script reads what it needs and resumes. Emulated time
 is frozen while stepping, so samples are exact even if the host is slow.
-`fire_rate.py` uses a write breakpoint (with `change`) on the ammo stock.
+
+`breakloop.py` puts a write breakpoint (with `change`) on each watched word
+and on the game frame counter (RVA `0x2AF28C`). A write breakpoint stops
+**before** the store, so the loop decodes the store and reads its source
+register to get the new value. The frame counter break is the frame
+boundary: input sent there applies to a known frame, never to a wall-clock
+moment. Tap patterns are counted in vblanks, so they mean the same input in
+A0 (2 vblanks per frame) and C1 (1 vblank per frame).
 
 ## Pitfalls found while building the bench (2026-10-19)
 
@@ -104,6 +112,14 @@ is frozen while stepping, so samples are exact even if the host is slow.
    locally hosted UI.
 7. A failed multi-word patch must not leave a partial state. `wordfix.py`
    checks every guard first, then writes, and rolls back on error.
+8. A write memcheck stops before the store executes: PC is on the store and
+   memory still holds the old value. The first version of `fire_rate.py`
+   read memory at the break, so it credited each shot to the next break and
+   missed the first one. Cadence from gaps was right; the first-shot delay
+   was one refire interval too long (fixed 2026-10-19, `breakloop.py`).
+9. A store in a branch delay slot stops the CPU on the branch, not on the
+   store (the frame counter increment sits in the slot of a `jal`).
+   `pending_store()` decodes the slot when PC holds a branch.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

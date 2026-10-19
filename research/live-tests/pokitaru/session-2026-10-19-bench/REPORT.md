@@ -5,7 +5,7 @@ date: 2026-10-19
 authors: ["Claude (Opus 5.5)"]
 status: complete
 evidence: [OBSERVED, TESTED, UNKNOWN]
-summary: "First owner-free measurement: from one savestate, C1 halves the Blaster cadence (1.998 -> 0.983 shots/s) and C1+weapondt restores it to A0 to the frame; repeat identical."
+summary: "First owner-free measurement: from one savestate, C1 halves the Blaster cadence (1.998 -> 0.983 shots/s) and C1+weapondt restores it to A0 to the frame, held or tapped; the first shot comes one game frame after the press in every config."
 systems: [Blaster, weapons, timing, tooling]
 levels: [Pokitaru]
 variants: [A0, C1, C1+weapondt]
@@ -35,36 +35,61 @@ using emulated time instead of wall time?
   - C1 is the three-word core (`0x96650`, `0x151E0`, `0x2FCFC`).
   - C1+weapondt adds delay slot `0x2FCF4`, `mov.s f12,f20` → `add.s f12,f20,f20`,
     plus a JIT refresh of the preceding branch.
-- Measurement by `tools/bench/fire_rate.py`. Circle is held for 6 emulated
-  seconds. A write breakpoint on the stock (`module + 0x2AEA4C`) timestamps
-  every shot with CoreTiming ticks; seconds = ticks / 222e6.
+- Measurement by `tools/bench/fire_rate.py` on `tools/bench/breakloop.py`.
+  Input is frame-locked: the press happens at a game frame boundary (frame
+  counter write break) and is the time origin. Fire input lasts 6 emulated
+  seconds, either held or tapped (2 vblanks pressed, 2 released, which is
+  the fastest tap A0 can see: one frame down, one frame up). A write
+  breakpoint on the stock (`module + 0x2AEA4C`) timestamps every shot with
+  CoreTiming ticks; seconds = ticks / 222e6.
 
-## Results (OBSERVED; run `work/runs/abc-fire-002`, two repeats)
+## Results (OBSERVED; runs `work/runs/abc-fire-004-hold`, `abc-fire-004-tap2`)
 
-| Config | Shots in 6 s | Shots/s | Median gap | First shot after press |
-|---|---|---|---|---|
-| A0 | 12 | 1.998 | 0.5005 s (15.00 A0 frames) | 0.5177 s |
-| C1 | 5 | 0.983 | 1.0177 s | 1.0349 s |
-| C1+weapondt | 12 | 1.998 | 0.5005 s | 0.5177 / 0.5174 s |
+Shots within 6 s and refire interval:
 
-Both repeats gave identical counts and gaps.
+| Config | Hold: shots, gap | Tap: shots, gap |
+|---|---|---|
+| A0 | 12, 0.5005 s (15 frames) | 12, 0.5339 s (16 frames) |
+| C1 | 6, 1.0177 s | 6, 1.0177 s |
+| C1+weapondt | 12, 0.5005 s | 12, 0.5339 s |
+
+Shots per second (from first to last shot): hold 1.998 / 0.983 / 1.998,
+tap 1.873 / 0.970 / 1.873. First shot after the press: 2.03 vblanks in A0
+(one 30 Hz frame) and 1.03 vblanks in C1 and C1+weapondt (one 60 Hz frame),
+in both modes. Stock before and after matches the counted shots (no shot
+left out of the window). The gaps equal those of the earlier run
+`abc-fire-002` (two repeats, identical).
 
 ## Interpretation
 
 - **TESTED:** C1 halves the Blaster refire in this setup (ratio 2.03), and
-  `weapondt` restores it to A0 to the frame. This reproduces the published
-  outcome (`docs/WEAPONS_PARITY_2026-10-02.md`: weapondt cadence = A0).
+  `weapondt` restores it to A0 to the frame, held or tapped. This reproduces
+  the published outcome (`docs/WEAPONS_PARITY_2026-10-02.md`: weapondt
+  cadence = A0).
+- **OBSERVED:** the press-to-shot latency is one game frame in every config,
+  so C1+weapondt answers one vblank (16.7 ms) sooner than A0. This is the
+  expected effect of a 60 Hz input sample, not a timing defect (INFERRED).
 - **UNKNOWN:** the absolute cadence differs. The published A0 value is 4.134
-  shots/s; here it is 1.998. Likely causes, unverified: a different game
-  state (the published runs used a later save, with more weapons and possibly
-  a weapon level or mod that fires faster), or held input versus repeated
-  presses. To settle with the owner (question list in the session handoff).
-- The first-shot delay also matches A0 under weapondt, so the draw-to-fire
-  path is corrected too, at this location.
+  shots/s; here it is 1.998 held and 1.873 at the fastest tap, so the input
+  method does not explain it. Remaining cause, unverified: the game state
+  (the published runs used a later save; a higher weapon level or another
+  upgrade may fire faster). To settle with the owner.
+
+## Correction (2026-10-19, same session)
+
+A first version of `fire_rate.py` read the stock at the break. A write
+breakpoint stops before the store, so each shot was credited to the next
+break and the first shot was missed. Its gaps and cadence were right; its
+first-shot delays (0.5177 s A0, 1.0349 s C1) were one refire interval too
+long, and the claim drawn from them ("draw-to-fire path corrected") is
+withdrawn. The values above come from the fixed tool.
 
 ## Method notes
 
 - Emulated time removes the foreground requirement. The window stayed in the
   background for the whole run.
 - Polling was abandoned: back-to-back requests froze CoreTiming.
+- Write breakpoints stop before the store; a store in a delay slot stops on
+  its branch. Both are handled in `breakloop.py` (`tools/bench/README.md`,
+  pitfalls 8 and 9).
 - Raw JSON stays local (`<root>/work/runs/`).

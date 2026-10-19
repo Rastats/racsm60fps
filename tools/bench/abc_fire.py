@@ -39,6 +39,8 @@ def main():
     ap.add_argument('--seconds', type=float, default=6.0)
     ap.add_argument('--settle', type=float, default=1.0, help='wall seconds after loading the state')
     ap.add_argument('--configs', nargs='+', required=True)
+    ap.add_argument('--mode', choices=('hold', 'tap'), default='hold')
+    ap.add_argument('--tap-vblanks', type=int, default=2)
     ap.add_argument('--repeat', type=int, default=1)
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()
@@ -52,13 +54,13 @@ def main():
             with Debugger(a.port).connect() as d:
                 d.release_all()
                 applied = wordfix.apply(d, core, fixes)
-                rec = fire_rate.measure(d, a.seconds)
+                rec = fire_rate.measure(d, a.seconds, mode=a.mode, tap_vblanks=a.tap_vblanks)
             row = {'config': config, 'repeat': rep, 'writes': len(applied['writes']),
                    'jitRefresh': applied['jitRefresh'], **rec}
             results.append(row)
-            print(json.dumps({k: row.get(k) for k in ('config', 'repeat', 'shots', 'shotsPerSecond',
-                                                      'gapSecondsMedian', 'firstShotDelaySeconds')}), flush=True)
-    (a.out / 'abc-fire.json').write_text(json.dumps({'state': a.state, 'seconds': a.seconds,
+            print(json.dumps({'config': config, 'repeat': rep,
+                              **{k: row.get(k) for k in fire_rate.SUMMARY_KEYS[1:]}}), flush=True)
+    (a.out / 'abc-fire.json').write_text(json.dumps({'state': a.state, 'seconds': a.seconds, 'mode': a.mode,
                                                      'results': results}, indent=1) + '\n', encoding='utf-8')
 
 
