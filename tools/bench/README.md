@@ -137,6 +137,10 @@ A0 (2 vblanks per frame) and C1 (1 vblank per frame).
 12. Callback RVAs near a class's known functions are not proof of the class:
     on 2026-10-20 the guessed crab group was the Gadgetron vendor. Check by
     `entities.py teleport` and a window capture before measuring.
+13. Init-time fixes need a state taken before the init. `elevator` rewrites
+    the Lvl3Elevator initializer (`docs/FIX_CATALOGUE_2026-10-01.md`): applied
+    by `wordfix.py` after loading a state where the elevator already exists,
+    it changes nothing and `C1+elevator` measures plain C1.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

@@ -19,6 +19,8 @@ Scripts (vblank = 1001/60000 s; G = --gaps value, default 20):
   walkjump    stick forward for 180 vblanks, cross for 4 vblanks at 60
   doublejump  cross for 4 vblanks at 0 and again at G, neutral to 180
   longjump    stick forward for 180 vblanks, R held from 56 to 68, cross at 60
+              (R is the manual camera yaw here: not the game's long jump,
+              the apex equals a single jump; kept as the R + jump test)
   walkr       longjump without the cross press (isolates the R trigger)
 
 The second press of a double jump is the most timing-sensitive input here:

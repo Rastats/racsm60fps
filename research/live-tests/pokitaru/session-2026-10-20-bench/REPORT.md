@@ -11,7 +11,7 @@ variants: [A0, C1, C1+camera]
 environment: "PPSSPP 1.20.4 portable, Direct3D 11, JIT, plugins off, no InterpGate; CPU 222 MHz; window in background"
 supersedes: []
 related: [research/live-tests/pokitaru/session-2026-10-19-bench/MOVEMENT-REPORT.md, tools/bench/README.md, tools/runtime/fixes.py]
-summary: "Double jump: C1 equals A0 shifted by one vblank (0.0000 u) for second presses 8 to 32 vblanks after the first. Holding R (manual camera yaw) while running turns Ratchet's heading 2.1x as far in C1; the `camera` fix restores the final heading. Climbing a slope after landing is 9-15 % faster in C1+camera. Damage and elevator tests are blocked: no crab or elevator located."
+summary: "Double jump: C1 equals A0 shifted by one vblank (0.0000 u) for second presses 8 to 32 vblanks after the first. Holding R (manual camera yaw) while running turns Ratchet's heading 2.1x as far in C1; the `camera` fix restores the final heading. Slope walking matches at the same spot (0.001 u). Damage and elevator tests are blocked: no crab or elevator located."
 state: pokitaru-blaster (Blaster drawn, start of Pokitaru)
 ---
 
@@ -32,22 +32,14 @@ state: pokitaru-blaster (Blaster drawn, start of Pokitaru)
     as much.
   - **C1+camera** restores the final heading (−153.15° at v134, the same as
     A0). The turn starts about one A0 frame earlier.
-- **New residual, OBSERVED.** After landing, Ratchet walks up a slope with the
-  stick held. Distance per 2 vblanks:
-
-  | Config | Distance per 2 vblanks | vs A0 |
-  | --- | --- | --- |
-  | A0 | 0.0826 → 0.0814 u | — |
-  | C1+camera | 0.0954 → 0.0884 u | +15 % → +9 % |
-  | C1 | 0.0919 → 0.0865 u | larger than A0 |
-
-  C1 points in another direction, so its ratio is not comparable.
-
-  The 2026-10-19 walk test, also with the stick held, showed 0.2000 u in both
-  configs on flat ground. The difference therefore needs slope or landing
-  state. Cause UNKNOWN.
-  - Candidate (INFERRED): a slope or landing speed clamp that is applied per
-    call, not per second.
+- **Slope speed after landing: no residual, OBSERVED.**
+  - In `move-longjump-002-camera`, C1+camera covered 9-15 % more distance than
+    A0 per 2 vblanks after landing (0.0954 vs 0.0826 u at v110). But the two
+    runs were up to 0.40 u apart there, on uneven ground.
+  - Clean retest (`move-slope-001`): state `pokitaru-slope` saved at A0's
+    post-landing spot, `walk` at stick angles ±25.6°, no R and no jump. C1
+    matches A0 to 0.001 u (0.0009 u at +25.6°).
+  - The earlier gap came from comparing different spots (INFERRED).
 - **Small heading offset while walking, OBSERVED.** At the same stick angle
   (0°), the steady walking heading is −127.59° in A0 and −127.70° in C1
   (0.10°). Speed is the same. The `camera` fix does not change it.
@@ -58,6 +50,8 @@ state: pokitaru-blaster (Blaster drawn, start of Pokitaru)
   - Standing still for 15 emulated seconds in the bench state gave no hit.
   - No crab was located: the three groups tried were the vendor and two
     entities in the sea.
+  - An execute breakpoint on the crab attack (module+`0x1254CC`, 2026-09-30
+    log) did not fire within 8 s of the bench state: no crab attacks there.
 - **Elevator: blocked.** The group guessed from code layout (callback
   `0x155CE4`, next to the Lvl3Elevator initializer `0x1563E8`) is not a solid
   platform: the player falls through at its position.
@@ -81,6 +75,7 @@ The difference comes from the 0.10° heading offset above, not from speed.
 | `move-longjump-001` | longjump (stick, R 56-68, cross 60), A0 C1 | 2.9928 u |
 | `move-longjump-002-camera` | longjump, A0 C1 C1+camera (repeat of 001 for A0, C1) | C1 2.9928 u; C1+camera 0.3972 u |
 | `move-walkr-001` | walkr (longjump without cross), A0 C1 | 0.0587 u |
+| `move-slope-001` | walk at ±25.6° from `pokitaru-slope`, A0 C1 | 0.0010 / 0.0009 u |
 | `damage-000-a0-probe` | damage_probe, A0, 15 s idle | no hit |
 
 The A0 and C1 results of `move-longjump-002-camera` repeat `move-longjump-001`
@@ -99,9 +94,13 @@ A0 samples at even vblanks only, so its lift and landing indices round up by
 up to one vblank. The trajectory comparison above is the exact test.
 
 `walkr` alone: Ratchet stops when R is pressed while running and stays still
-after R is released, although the stick is still held. The stop point differs
-by 0.059 u (C1 slides further). The reason he stays still is UNKNOWN; this
-needs an owner answer.
+after R is released, although the stick is still held. A window capture at the
+end (A0) shows him at the water's edge: R turned the camera, so the
+camera-relative stick now points at the sea and the shore stops him. The stop
+point differs by 0.059 u (C1 slides further).
+
+`longjump` is a script name, not the game's long jump: R here is the camera
+yaw, and the apex equals a single jump (1.118 u).
 
 ## Tools added or changed (`tools/bench/`)
 
@@ -126,11 +125,10 @@ needs an owner answer.
 1. A savestate (or coordinates) next to a crab that attacks, and the crab
    group callback RVA. The public repo lacks the class atlas
    (`research/v2/c1-residual-timing-atlas/`), so classes print as `?`.
-2. A savestate just before the Pokitaru elevator, its group callback, and how
-   it is triggered (step on, button, switch).
-3. What R does on foot besides camera yaw: Ratchet stops and stays still with
-   the stick held (`walkr`). Is that a known stance (strafe / first-person)?
-4. Slope speed after landing (+9 to +15 % in C1+camera): is a slope or landing
-   clamp already known in the research branch?
-5. Is the 0.10° steady heading offset while walking already known (stick
+2. The Pokitaru elevator: its group callback, how it is triggered (step on,
+   button, switch) and **when Lvl3Elevator initializes** (level load, approach,
+   respawn). The `elevator` fix only acts at initialization
+   (`docs/FIX_CATALOGUE_2026-10-01.md`), so a savestate taken after init would
+   make `C1+elevator` measure plain C1. A state taken before init is needed.
+3. Is the 0.10° steady heading offset while walking already known (stick
    filtering or turn smoothing with a per-call factor)?
