@@ -43,11 +43,30 @@ DATA = fx.DATA
 LEVEL01_SIZE = pg.MODULE_SIZE
 
 
+def expand(fixes):
+    """Resolve fixes.py group names ('camera', ALIASES) to DATA names; refuse anything else.
+
+    Before 2026-10-20 apply() skipped unknown names silently, so 'C1+camera'
+    ran as plain C1.
+    """
+    out = set(fixes)
+    if 'camera' in out:
+        out = (out - {'camera'}) | set(fx.CAMERA)
+    for name, members in fx.ALIASES.items():
+        if name in out:
+            out = (out - {name}) | set(members)
+    unknown = out - set(DATA)
+    if unknown:
+        raise BenchError(f'not a word-level fix: {sorted(unknown)} (wrappers/stubs need fixes.py and InterpGate)')
+    return out
+
+
 def apply(d, core, fixes):
     mod = d.module('rcp1')
     if mod['size'] != LEVEL01_SIZE:
         raise BenchError('LEVEL_01 (Pokitaru) must be the resident level')
     base = mod['address']
+    fixes = expand(fixes)
     want = {}
     exp = pg.expected(base, core)
     a0, c1 = pg.expected(base, 'A0'), pg.expected(base, 'C1')
@@ -100,10 +119,10 @@ def main():
         return
     if not a.core:
         ap.error('--core is required')
-    fixes = {f for f in a.fix.split(',') if f}
-    unknown = fixes - set(DATA)
-    if unknown:
-        ap.error(f'not a word-level fix: {sorted(unknown)} (wrappers/stubs need fixes.py and InterpGate)')
+    try:
+        fixes = expand({f for f in a.fix.split(',') if f})
+    except BenchError as e:
+        ap.error(str(e))
     if a.core == 'A0' and fixes:
         ap.error('A0 is the original game: no fixes')
     with Debugger(a.port).connect() as d:

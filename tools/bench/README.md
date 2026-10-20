@@ -2,6 +2,9 @@
 
 Status: working, 2026-10-19. First unattended A/B/C measurement reproduced
 (report: [research/live-tests/pokitaru/session-2026-10-19-bench/REPORT.md](../../research/live-tests/pokitaru/session-2026-10-19-bench/REPORT.md)).
+2026-10-20: double jump, R + jump and the camera fix measured; damage and
+elevator blocked on locating a crab and the elevator
+([session-2026-10-20-bench/REPORT.md](../../research/live-tests/pokitaru/session-2026-10-20-bench/REPORT.md)).
 
 Goal: let an agent run PPSSPP instances, look at the screen, drive the
 controller, apply fixes and measure A0 / C1 / C candidates **without the owner
@@ -48,7 +51,10 @@ Direct3D 11. The graphics backend does not change game logic.
 | `breakloop.py` | event loop: exact tick and new value of watched stores, plus a per-frame callback for frame-locked input |
 | `fire_rate.py` | fire cadence and first-shot latency in emulated time (`--mode hold` or `tap`) |
 | `abc_fire.py` | A/B/C runner: for each config, load the state, apply it, measure (`--rank` test aid) |
-| `move_probe.py` | walk / jump trajectories per config, frame-locked scripts, `--angles` scan |
+| `move_probe.py` | walk / jump / double jump (`--gaps`) / R + jump trajectories per config, frame-locked scripts, `--angles` scan |
+| `move_compare.py` | position difference and heading per 2 vblanks against A0, C-configs shifted one vblank |
+| `damage_probe.py` | health and post-hit suppression writes by breakpoint: hit times, HP lost, suppression duration |
+| `entities.py` | pump-1 entity positions nearest first; `teleport` test aid |
 
 Typical session:
 
@@ -121,6 +127,16 @@ A0 (2 vblanks per frame) and C1 (1 vblank per frame).
 9. A store in a branch delay slot stops the CPU on the branch, not on the
    store (the frame counter increment sits in the slot of a `jal`).
    `pending_store()` decodes the slot when PC holds a branch.
+
+10. `wordfix.apply()` skipped fix names missing from `DATA` without a word
+    until 2026-10-20, so `C1+camera` ran as plain C1. It now expands
+    `camera` and the `fixes.py` aliases and refuses anything else.
+11. Path length hides heading errors: compare positions at equal emulated
+    times (`move_compare.py`). The 2026-10-19 walk parity of 0.0005 u was a
+    path-length figure; positions differ by 0.008 u.
+12. Callback RVAs near a class's known functions are not proof of the class:
+    on 2026-10-20 the guessed crab group was the Gadgetron vendor. Check by
+    `entities.py teleport` and a window capture before measuring.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

@@ -16,6 +16,12 @@ related: [research/v2/pokitaru/player-clock-socle-map.md, tools/bench/README.md,
 
 # Unattended movement A/B: walk and jump
 
+> **Correction (2026-10-20):** the 0.0005 u figures compare path lengths, not
+> positions. At equal emulated times the 3D position difference is 0.008 u
+> walking and 0.046 u for the running jump, from a steady 0.10° heading offset;
+> speed parity stands. See
+> [session-2026-10-20-bench/REPORT.md](../session-2026-10-20-bench/REPORT.md).
+
 ## Summary
 
 - C1 (three-word core) moves Ratchet exactly like A0, one vblank earlier.
