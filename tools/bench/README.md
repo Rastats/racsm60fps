@@ -50,11 +50,14 @@ Direct3D 11. The graphics backend does not change game logic.
 | `wordfix.py` | applies the C1 core and any word-level fix of `tools/runtime/fixes.py` (`DATA`) without a plugin |
 | `breakloop.py` | event loop: exact tick and new value of watched stores, plus a per-frame callback for frame-locked input |
 | `fire_rate.py` | fire cadence and first-shot latency in emulated time (`--mode hold` or `tap`) |
-| `abc_fire.py` | A/B/C runner: for each config, load the state, apply it, measure (`--rank` test aid) |
+| `abc_fire.py` | A/B/C runner: for each config, load the state, apply it, measure (`--rank`, `--weapon` test aids) |
 | `move_probe.py` | walk / jump / double jump (`--gaps`) / R + jump trajectories per config, frame-locked scripts, `--angles` scan |
 | `move_compare.py` | position difference and heading per 2 vblanks against A0, C-configs shifted one vblank |
 | `damage_probe.py` | health and post-hit suppression writes by breakpoint: hit times, HP lost, suppression duration |
 | `entities.py` | pump-1 entity positions nearest first; `teleport` test aid |
+| `level_route.py` | reach another level from boot: redirects the LEVEL_01 module path in RAM, then presses through the frontend |
+| `level_port.py` | ports LEVEL_01 RVAs (C1 core, data addresses, `fixes.DATA`) to another level PRX by masked byte matching, offline |
+| `levels.py` | per-level profile keyed by `rcp1` size; `wordfix`, `breakloop`, `clock`, `move_probe`, `fire_rate` use it |
 
 Typical session:
 
@@ -141,6 +144,43 @@ A0 (2 vblanks per frame) and C1 (1 vblank per frame).
     the Lvl3Elevator initializer (`docs/FIX_CATALOGUE_2026-10-01.md`): applied
     by `wordfix.py` after loading a state where the elevator already exists,
     it changes nothing and `C1+elevator` measures plain C1.
+
+## Other levels (2026-10-22)
+
+```text
+python tools/bench/ppsspp_bench.py launch
+python tools/bench/level_route.py go --to 02                  # Ryllus, new-game inventory
+python tools/bench/states.py save --name banc-ryllus-start
+python tools/bench/level_port.py --target LEVEL_02            # what was ported, offline
+```
+
+Every level module carries its own engine copy, so each RVA moves. The bench
+keeps the hand-checked LEVEL_01 constants and ports them to the resident
+level (`levels.py`). A fix whose site is not matched uniquely, or holds
+another word, is refused rather than guessed: `C1+crab` on Ryllus fails
+with "fixes not ported". Checks against the owner's files: the C1 core of
+`cheats/eu/base/LEVEL_02..06,15,22` and the player struct implied by the ten
+EU health cheats (Pokitaru to Quadrona) are reproduced exactly.
+
+14. HI16/LO16 relocations of a PRX are relative to the segment they point
+    into. An unrelocated `lui`/offset pair aimed at segment 1 (bss) holds
+    `rva - segment 1 base`: the LEVEL_01 player pair at 0x30014 reads
+    0x5A838 for 0x337940 (segment 1 starts at 0x2DD108).
+15. Owned flags do not populate the triangle quick-select ring. The game
+    switches weapon when `player+0x99C` (requested id) is nonzero; it copies
+    it to `+0x998` (LEVEL_02 code RVA 0x1F2EC). Writing `+0x99C` equips any
+    weapon with its model and HUD, owned or not (test aid:
+    `fire_rate.request_weapon`, `abc_fire.py --weapon N`; OBSERVED on
+    LEVEL_02 only). ShieldCharger (7) and MiniTurret (14) are refused: the
+    game falls back to the Blaster, and the ShieldCharger request uses one
+    charge.
+16. In LEVEL_16-20, `level_port.py` matches the vblank site but not the
+    delta, the substep loop or the weapon table, so `levels.py` refuses
+    them. The docs already say their substep limit is 1 in the original.
+17. LEVEL_15 and LEVEL_21 have the same `rcp1` size (0x3FC700) and differ
+    by 14 bytes at image offset 0x235930; their ports are identical, so
+    `levels.py` returns one profile named `LEVEL_15/LEVEL_21`. The ISO has
+    no LEVEL_11 to LEVEL_14.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

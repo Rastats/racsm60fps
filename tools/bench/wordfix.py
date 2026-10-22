@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Apply or revert word-level fixes on LEVEL_01 without any plugin.
+"""Apply or revert word-level fixes on the resident level without any plugin.
 
 Reuses the definitions of tools/runtime/fixes.py (`DATA`: name -> (rva,
 original word, fixed word)) and the C1 core of tools/runtime/pump-gate.py, so
-nothing is duplicated. Only the DATA family is supported: wrapper, stub and
+nothing is duplicated. Those RVAs are LEVEL_01's; on another level the core and
+fix sites come from the port of tools/bench/level_port.py (via levels.py), and a
+fix that did not port is refused instead of being written blind. Only the DATA family is supported: wrapper, stub and
 telemetry fixes need the InterpGate plugin and stay with fixes.py.
 
 Each write is guarded by the expected old word and verified by read-back, with
@@ -61,19 +63,46 @@ def expand(fixes):
     return out
 
 
+def core_words(base, prof):
+    """{rva: (A0 word, C1 word)} of the C1 core for a ported level (levels.py).
+
+    vblank: the relocated `jal` -> nop; delta: `lui rX,0x3D08` -> 0x3C88;
+    loop: `slti rX,rY,2` -> 1, left alone where the original already holds 1
+    (LEVEL_16-20, docs/TECHNICAL_OVERVIEW.md).
+    """
+    f = prof['core_file']
+    vb = f['vblank']
+    if vb >> 26 != 3:
+        raise BenchError(f'{prof["stem"]}: vblank site holds 0x{vb:08X}, not a jal')
+    jal_rt = 0x0C000000 | (((base + ((vb & 0x03FFFFFF) << 2)) >> 2) & 0x03FFFFFF)
+    return {prof['core']['vblank']: (jal_rt, 0),
+            prof['core']['delta']: (f['delta'], (f['delta'] & 0xFFFF0000) | 0x3C88),
+            prof['core']['loop']: (f['loop'], (f['loop'] & 0xFFFF0000) | 1)}
+
+
 def apply(d, core, fixes):
     mod = d.module('rcp1')
-    if mod['size'] != LEVEL01_SIZE:
-        raise BenchError('LEVEL_01 (Pokitaru) must be the resident level')
     base = mod['address']
     fixes = expand(fixes)
     want = {}
-    exp = pg.expected(base, core)
-    a0, c1 = pg.expected(base, 'A0'), pg.expected(base, 'C1')
-    for rva in (pg.VBLANK, pg.DELTA, pg.LOOP):
-        want[rva] = ({a0[rva], c1[rva]}, exp[rva])     # core word: either A0 or C1 accepted as old value
-    for name in DATA:
-        rva, orig, new = DATA[name]
+    if mod['size'] == LEVEL01_SIZE:
+        exp = pg.expected(base, core)
+        a0, c1 = pg.expected(base, 'A0'), pg.expected(base, 'C1')
+        for rva in (pg.VBLANK, pg.DELTA, pg.LOOP):
+            want[rva] = ({a0[rva], c1[rva]}, exp[rva])     # core word: either A0 or C1 accepted as old value
+        table = DATA
+    else:
+        # Other level: core and fixes ported from LEVEL_01 by levels.py / level_port.py.
+        import levels
+        prof = levels.profile_for_size(mod['size'])
+        for rva, (w_a0, w_c1) in core_words(base, prof).items():
+            want[rva] = ({w_a0, w_c1}, w_c1 if core == 'C1' else w_a0)
+        table = prof['fixes']
+        missing = fixes - set(table)
+        if missing:
+            raise BenchError(f'{prof["stem"]}: fixes not ported from LEVEL_01: {sorted(missing)}')
+    for name in table:
+        rva, orig, new = table[name]
         want[rva] = ({orig, new}, new if name in fixes else orig)
     writes, refresh = [], 0
     d.pause()

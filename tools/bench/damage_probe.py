@@ -32,8 +32,9 @@ from ppsspp_bench import Debugger, DEFAULT_PORT  # noqa: E402
 from breakloop import BreakLoop, CPU_HZ  # noqa: E402
 import states  # noqa: E402
 import wordfix  # noqa: E402
+import levels  # noqa: E402
 
-PLAYER = 0x337940
+PLAYER = 0x337940                   # LEVEL_01; other levels: levels.py
 HP, SUPPRESS = 0x964, 0x97C
 
 
@@ -42,8 +43,8 @@ def _f(u):
 
 
 def record(d, seconds):
-    base = d.module('rcp1')['address']
-    pl = base + PLAYER
+    base, prof = levels.profile(d)
+    pl = base + prof['player']
     events = []
     t0 = []
 

@@ -48,6 +48,7 @@ from ppsspp_bench import Debugger, DEFAULT_PORT  # noqa: E402
 from breakloop import BreakLoop, CPU_HZ  # noqa: E402
 import states  # noqa: E402
 import wordfix  # noqa: E402
+import levels  # noqa: E402
 
 VBLANK_TICKS = 3_703_700
 VBLANK_S = 1001 / 60000
@@ -85,8 +86,8 @@ def wanted(spec, v, angle):
 
 
 def play(d, spec, angle=0.0):
-    base = d.module('rcp1')['address']
-    pos_addr = base + PLAYER + POS
+    base, prof = levels.profile(d)
+    pos_addr = base + prof['player'] + POS
     total = spec[0]
     buttons = sorted({k for _, _, inp in spec[1] for k in inp if k != 'stick'})
     samples, cur = [], {'stick': None, 'held': None}

@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ppsspp_bench import Debugger, DEFAULT_PORT  # noqa: E402
 from breakloop import BreakLoop, CPU_HZ  # noqa: E402
+import levels  # noqa: E402
 
 VBLANK_TICKS = 3_703_700         # one 59.94 Hz vblank at 222 MHz (1001/60000 s)
 FRAME_30 = 1001 / 30000          # one A0 frame (two vblanks), seconds
@@ -42,9 +43,9 @@ def set_rank(d, rank):
     layout in tools/runtime/inventory-aid.py). RAM only, after a state load; the
     save copy and the savestate are untouched. The fire cadence follows at once
     (OBSERVED 2026-10-19); models and other rank parameters are not reloaded."""
-    base = d.module('rcp1')['address']
-    wid = d.u32(base + PLAYER + WEAPON_ID)
-    addr = base + AMMO_BASE + wid * AMMO_STRIDE + RANK
+    base, prof = levels.profile(d)
+    wid = d.u32(base + prof['player'] + WEAPON_ID)
+    addr = base + prof['ammo_base'] + wid * AMMO_STRIDE + RANK
     d.pause()
     try:
         old = d.u32(addr)
@@ -54,16 +55,32 @@ def set_rank(d, rank):
     return old
 
 
+def request_weapon(d, wid, timeout=3.0):
+    """TEST AID: request weapon `wid` by writing player+0x99C; the game copies it to
+    +0x998 and switches model and HUD (OBSERVED 2026-10-22 on LEVEL_02, copy at code
+    RVA 0x1F2EC). RAM only. Some ids are refused (ShieldCharger, MiniTurret: the game
+    falls back to the Blaster). Returns the equipped id after the wait."""
+    base, prof = levels.profile(d)
+    pl = base + prof['player']
+    d.pause()
+    try:
+        d.write_u32(pl + WEAPON_ID + 4, wid, expect=d.u32(pl + WEAPON_ID + 4))
+    finally:
+        d.resume()
+    end = time.time() + timeout
+    while time.time() < end and d.u32(pl + WEAPON_ID) != wid:
+        time.sleep(0.1)
+    time.sleep(0.5)                            # let the switch animation finish
+    return d.u32(pl + WEAPON_ID)
+
+
 def measure(d, seconds, button='circle', mode='hold', tap_vblanks=2):
     """Hold, or tap (pressed `tap_vblanks`, released `tap_vblanks`), frame-locked from the first frame."""
-    mod = d.module('rcp1')
-    if mod['size'] != LEVEL01_SIZE:
-        raise SystemExit('LEVEL_01 (Pokitaru) must be resident')
-    base = mod['address']
-    wid = d.u32(base + PLAYER + WEAPON_ID)
+    base, prof = levels.profile(d)             # LEVEL_01 or a level ported by levels.py
+    wid = d.u32(base + prof['player'] + WEAPON_ID)
     if not 0 <= wid < 0x19:
         raise SystemExit(f'bad weapon id {wid}')
-    stock_addr = base + AMMO_BASE + wid * AMMO_STRIDE + STOCK
+    stock_addr = base + prof['ammo_base'] + wid * AMMO_STRIDE + STOCK
     rec = {'weaponId': wid, 'stockRva': hex(stock_addr - base), 'cpuHz': CPU_HZ, 'mode': mode,
            'stockBefore': d.u32(stock_addr)}
     if mode == 'tap':

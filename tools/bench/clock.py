@@ -21,14 +21,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ppsspp_bench import Debugger, DEFAULT_PORT  # noqa: E402
+import levels  # noqa: E402
 
 FRAME_COUNTER_RVA = 0x2AF28C
 VBLANK_HZ = 60000 / 1001
 
 
-def sample(d, base):
+def sample(d, base, fc_rva=FRAME_COUNTER_RVA):
     t = int(d.cpu()['ticks'])
-    f = d.u32(base + FRAME_COUNTER_RVA)
+    f = d.u32(base + fc_rva)
     return t, f
 
 
@@ -41,11 +42,12 @@ def main():
     with Debugger(a.port).connect() as d:
         mod = d.module('rcp1')
         base = mod['address']
-        pts = [sample(d, base)]
+        fc_rva = levels.profile_for_size(mod['size'])['frame_counter']
+        pts = [sample(d, base, fc_rva)]
         end = time.monotonic() + a.seconds
         while time.monotonic() < end:
             time.sleep(a.interval)
-            pts.append(sample(d, base))
+            pts.append(sample(d, base, fc_rva))
     per_frame = [(t1 - t0) / (f1 - f0) for (t0, f0), (t1, f1) in zip(pts, pts[1:]) if f1 > f0]
     dt = pts[-1][0] - pts[0][0]
     df = pts[-1][1] - pts[0][1]

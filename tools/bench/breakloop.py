@@ -73,8 +73,12 @@ def pending_store(d, pc):
 
 
 class BreakLoop:
-    def __init__(self, d, base):
+    def __init__(self, d, base, frame_counter_rva=None):
         self.d, self.base = d, base
+        if frame_counter_rva is None:          # per level (levels.py); LEVEL_01: FRAME_COUNTER_RVA
+            import levels
+            frame_counter_rva = levels.profile(d)[1]['frame_counter']
+        self.frame_counter_rva = frame_counter_rva
         self.watches = {}          # address -> callback(tick, old, new)
         self.frame_cb = None
         self.end_cb = None
@@ -94,7 +98,7 @@ class BreakLoop:
     def run(self, seconds, wall_limit=None):
         """Run until `seconds` of emulated time have passed; return (start tick, end tick)."""
         d = self.d
-        fc = self.base + FRAME_COUNTER_RVA
+        fc = self.base + self.frame_counter_rva
         addrs = list(self.watches) + ([fc] if self.frame_cb else [])
         span = int(seconds * CPU_HZ)
         wall_limit = wall_limit or max(60.0, seconds * 40)

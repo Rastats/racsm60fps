@@ -29,13 +29,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from ppsspp_bench import Debugger, DEFAULT_PORT  # noqa: E402
+import levels  # noqa: E402
 
-MANAGER = 0x2CA0D0
+MANAGER = 0x2CA0D0                  # LEVEL_01; other levels: levels.py
 PLAYER, POS = 0x337940, 0x30
 
 
+def _rva(d, name):
+    return levels.profile(d)[1][name]
+
+
 def groups(d, base):
-    mgr = d.u32(base + MANAGER)
+    mgr = d.u32(base + _rva(d, 'entity_manager'))
     arr, n = d.u32(mgr + 0x34), d.u32(mgr + 0x38)
     out = []
     for i in range(n):
@@ -48,7 +53,7 @@ def groups(d, base):
 
 
 def player_pos(d, base):
-    return list(struct.unpack('<3f', d.read(base + PLAYER + POS, 12)))
+    return list(struct.unpack('<3f', d.read(base + _rva(d, 'player') + POS, 12)))
 
 
 def listing(d, base, only=None, near=None):
@@ -92,7 +97,7 @@ def main():
             d.pause()
             try:
                 for k, v in enumerate(a.to):
-                    d.write_u32(base + PLAYER + POS + 4 * k, struct.unpack('<I', struct.pack('<f', v))[0])
+                    d.write_u32(base + _rva(d, 'player') + POS + 4 * k, struct.unpack('<I', struct.pack('<f', v))[0])
             finally:
                 d.resume()
             print(json.dumps({'before': before, 'after': player_pos(d, base)}))

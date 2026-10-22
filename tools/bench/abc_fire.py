@@ -42,6 +42,8 @@ def main():
     ap.add_argument('--mode', choices=('hold', 'tap'), default='hold')
     ap.add_argument('--tap-vblanks', type=int, default=2)
     ap.add_argument('--rank', type=int, help='TEST AID: weapon rank written after each state load (0 = V1)')
+    ap.add_argument('--weapon', type=int, help='TEST AID: weapon id requested after each state load '
+                    '(fire_rate.request_weapon); refused ids fall back to the Blaster')
     ap.add_argument('--repeat', type=int, default=1)
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()
@@ -54,6 +56,10 @@ def main():
             time.sleep(a.settle)
             with Debugger(a.port).connect() as d:
                 d.release_all()
+                if a.weapon is not None:
+                    equipped = fire_rate.request_weapon(d, a.weapon)
+                    if equipped != a.weapon:
+                        raise SystemExit(f'weapon {a.weapon} refused by the game (equipped {equipped})')
                 applied = wordfix.apply(d, core, fixes)
                 rank_before = fire_rate.set_rank(d, a.rank) if a.rank is not None else None
                 rec = fire_rate.measure(d, a.seconds, mode=a.mode, tap_vblanks=a.tap_vblanks)
