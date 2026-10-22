@@ -51,12 +51,108 @@ This is why mode G (skip some entity callbacks) emptied lists and made the sea
 flicker on 2026-09-30, while G1 (skip the whole pump, counters not reset)
 did not.
 
-## Open questions (live tests below)
+## Live tests (2026-10-22)
 
-1. Does the render pass read entity transforms live, or a copy made during update?
-2. Does the render pass write state that the next update reads?
-3. Are skinning/pose matrices computed during update or render?
+Setup: portable PPSSPP 1.20.4 (`emu/ppsspp-3`, port 60909), IR interpreter
+core (`CPUCore = 2`), Direct3D 11, no plugin, state `pokitaru-start` (A0) and
+`interp-g1` (the same spot with G1 applied by `tools/runtime/pump-gate.py`).
+No input during the runs. Times are emulated (`cpu.status.ticks`, 222 MHz).
+Scripts: [scripts/](scripts/). Raw runs: `work/runs/interp-0xx` (outside Git).
 
-## Results
+Debugger caveat found on the way: with several CPU breakpoints added in a row,
+only the last one fired until a `cpu.breakpoint.list` request was sent after
+the adds (OBSERVED on both the JIT and IR cores; cause UNKNOWN).
+`render_probe.py` sends that round trip.
 
-(pending)
+### Dispatcher case (OBSERVED)
+
+60 gameplay frames under A0: the update `0x1517C` was entered 60 times from
+`0x15AA8` and the render `0x156DC` 60 times from `0x15AB0`; no other caller.
+
+### 1. The draw reads the entity world matrix live (OBSERVED)
+
+Pump-1 entity records start with a 4x4 world matrix: rows 0-2 rotation, row 3
+translation and 1.0 (Ratchet's moby, group 62: rotation rows match a yaw, row 3
+equals the player position). `render_probe.py lift` adds 1.5 u to row 3 x at
+render entry and restores it after the render call, for 20 frames. The window
+capture shows Ratchet's body displaced while Clank, a separate entity
+(group 67), stays in place; the value written was still in memory at render
+exit (the render pass does not rebuild the matrix from another source), and
+the restored value is the original bit for bit.
+
+### 2. The render pass writes nothing in entity state (OBSERVED, scoped)
+
+Write memchecks armed only between render entry and exit, over the whole
+pump-1 entity area (`0x18000` bytes from the first entity array), Ratchet's
+animation block (`+0x48`) and data block (`+0x58`): 0 writes in 30 frames.
+Positive control, same ranges armed during the update only: the 200-hit cap
+was reached in the first frame (store at `0x0E2EC`). Scope: these ranges
+only; global render-side caches elsewhere in RAM are not covered by this test
+(see the leak test below for an end-to-end check).
+
+### 3. Skinning matrices are computed in the update, outside pump 1 (OBSERVED)
+
+The moby draw `0x6F514` loads the world matrix from the moby itself and draws
+the skinned model with a bone-matrix buffer at `moby+0x50` (call `0x7598C`).
+Write memchecks on Ratchet's bone buffer: 0 writes during the render pass in
+10 frames; during the update, stores at `0x77978` (cap of 2000 hits reached
+in under 2 frames). `0x77978` belongs to the animation pass reached from
+`0x78158`, which the main update calls once per frame after pump 1. So under
+G1 skeletal poses still advance at 60 Hz; only what pump-1 callbacks write
+(the world matrix and the AI state) is at 30 Hz.
+
+Population at the Pokitaru start: 1,162 entity slots in 155 groups, 465
+active, 6 active with a bone buffer; about 14 entities move per 30 Hz tick
+(1,683 blended matrices over 120 ticks).
+
+### 4. Prototype G1 + render interpolation (OBSERVED)
+
+`interp_proto.py --mode interp`: at render entry on frames where the gated
+pump ran, every pump-1 world matrix that changed since the previous logic tick
+is replaced by `lerp(previous, current, 0.5)`; after the render call the exact
+entry bytes are written back. On frames without a pump run the current state
+is drawn. Entities that move on a frame without a pump run are driven at
+60 Hz elsewhere and are never blended: the prototype found four, Ratchet's
+moby and the three entities attached to him (groups 62, 67, 68, 80).
+
+Same tracked entities, about 4 emulated seconds each:
+
+| Config | Entity 16:0 speed (u/s) | Drawn position changes per render |
+| --- | --- | --- |
+| A0 | 1.4985 | 119/119 at 29.97 Hz |
+| C1 | 2.9969 (x2.00) | 239/239 at 59.94 Hz |
+| G1 | 1.5043 | 120/239 (30 Hz steps of 0.050 u) |
+| G1 + interpolation | 1.4926 drawn, 1.4926 authoritative | 238/239 (steps of 0.025 u) |
+
+Entity 40:3: A0 3.0076, C1 6.0022, G1 3.0174, G1 + interpolation 2.9939 u/s;
+drawn steps 0.100 u at 30 Hz in G1 against 0.050 u every frame with
+interpolation. Speeds differ by up to 0.4 % between runs because the windows
+start at different points of a curved path; C1's factor of 2 is the known
+defect.
+
+The world entities are drawn one 60 Hz frame later than their logic state.
+Player, Clank, camera and skeletal animation are not delayed.
+
+### 5. No leak into the game state (OBSERVED)
+
+Digest (SHA-1) of the whole entity area (`0x24500` bytes) at every render
+entry, before any blend, matched on the gate's run counter between two runs
+started from `interp-g1`:
+
+| Pair | Matched renders | Identical |
+| --- | --- | --- |
+| G1 vs G1 (determinism) | 238 | 238 |
+| G1 vs G1 + interpolation | 237 | 237 |
+| G1 vs G1 + interpolation with 60 Hz exemption | 238 | 238 |
+
+The interpolation changes what is drawn, not what the game simulates.
+
+### 6. What the screen shows (OBSERVED)
+
+Window captures after each render, G1 against G1 + interpolation from the same
+state (`scripts/make_strip.py`, GIFs in `work/runs/interp-035-seagull-crop.gif`
+and `interp-036-full.gif`, outside Git): the two runs are pixel-identical on
+frames without a pump run, and on pump frames they differ only in a 45 x 20
+pixel box around a seagull at the right edge, which moves by half a step. The
+camera turns every frame in this state, so judder is better read from the
+logged drawn transforms than from pixel differences.
