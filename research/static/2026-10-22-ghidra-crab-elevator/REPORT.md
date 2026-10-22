@@ -218,9 +218,11 @@ one 60 Hz frame early, not 2x (INFERRED; the crab path calls it with 0).
 
 ## 6. Questions for the owner (relayed by Antoine)
 
-1. Is the Pokitaru elevator the end-of-level lift (cutscene at the top, then
-   the next module 0x484B00)? Your 10.01 / 5.00 s: measured on a full ride
-   after the cutscene was seen, or from the step?
+1. (Answered from the repository, not asked:
+   `patches/experimental/lvl3-elevator-halfstep/REPORT.md` derives 10.01 /
+   5.00 s from a probe of one callback per frame x step 1/300, not from a
+   full ride; the only timed full rides are Kalidon, LEVEL_03, A0
+   2.494-2.501 s. That this is the end-of-level lift is OBSERVED here.)
 2. The elevator re-initializes on respawn (OBSERVED here). Is there another
    re-init (checkpoint reload, menu "restart level") the plugin must handle
    when it switches the step between A0 and C1 at run time?
