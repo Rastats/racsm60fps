@@ -9,7 +9,7 @@ systems: [timing, rendering, entities, interpolation]
 levels: [Pokitaru]
 variants: [A0, C1, G1]
 related: [research/v2/framerate-methods-20261006/REPORT.md, research/live-tests/pokitaru/session-2026-09-30/SESSION-LOG.md, tools/runtime/pump-gate.py]
-summary: "Pure 60 Hz logic + interpolation: refuted (nothing to interpolate under C1). Hybrid G1 (world entities of pump 1 at 30 Hz, player/camera/animation at 60 Hz) + render-only interpolation: feasible on LEVEL_01, proven by a debugger prototype and a 1.8 KB PRX (correct world speed, 238/239 drawn changes, game state bit-identical). Owner must rule on the 30 Hz world logic."
+summary: "Pure 60 Hz logic + interpolation: refuted (nothing to interpolate under C1). Hybrid G1 (world entities of pump 1 at 30 Hz, player/camera/animation at 60 Hz) + render-only interpolation: feasible on LEVEL_01: debugger prototype OBSERVED (correct world speed, 238/239 drawn changes, game state bit-identical); PRX (1.8 KB code, 46.8 KB resident) OBSERVED running the same gate and blend, its speed and no-leak INFERRED. Owner must rule on the 30 Hz world logic."
 ---
 
 # Render interpolation between two logic states (exploratory)
@@ -23,10 +23,14 @@ summary: "Pure 60 Hz logic + interpolation: refuted (nothing to interpolate unde
    already advances once per displayed frame; there is no in-between state.
 2. Hybrid feasible on LEVEL_01: world entities of pump 1 at their original
    30 Hz (G1), player, camera and skeletal animation at 60 Hz, world
-   transforms blended in the render pass only. Proven by a debugger prototype
-   and a 1.8 KB PRX: world speed back to A0 (1.4926 against 1.4985 u/s), drawn
-   positions change on 238/239 frames, game state bit-identical to G1.
-3. It is still 30 Hz world logic, which the owner rejects today: his call.
+   transforms blended in the render pass only. The debugger prototype
+   (OBSERVED) brings world speed back to A0 (1.4926 against 1.4985 u/s),
+   changes drawn positions on 238/239 frames and leaves the game state
+   bit-identical to G1. The PRX (1.8 KB code, 46.8 KB resident) runs the same
+   gate and blend on the bench (OBSERVED: counters, 59.94 Hz kept); its speed
+   and no-leak results are INFERRED from the shared logic, not measured.
+3. It is still 30 Hz world logic, which the owner rejects today: the owner's
+   call.
 4. Open: real PSP CPU cost (estimated 1-4 % of a frame pair), platforms the
    player rides, the Blaster cooldown, other levels (engine signatures found
    in all 20 level modules, not run).
@@ -202,14 +206,14 @@ guarded), runs `work/runs/interp-070..074`:
 | --- | --- |
 | Pump runs / skips | 374 / 375 |
 | Frames with a blend / matrices blended | 210 / 2,096 (10 per blended frame) |
-| Entities exempted as 60 Hz | 4 (as the debugger prototype) |
+| Entities exempted as 60 Hz | 4 (same count as the debugger prototype; slots not compared) |
 | Snapshot entries | 460 |
 | Snapped (jump > 4 u), overflows | 0, 0 |
 
 Frame period over 119 frames, render exit to render exit: mean 3,703,700
 ticks (59.94 Hz) in mode 1 and mode 2, min 3,671,696, max 3,735,704; render
 exit stays at the same vblank phase (mean 3,547,595 ticks in mode 1 against
-3,548,363 in mode 2). No frame slipped in emulated time.
+3,548,363 in mode 2). Render exit is pinned by the vblank wait inside the render, so this shows that no frame slipped in emulated time, not what the plugin costs.
 
 Cost. The breakpoint-based [scripts/cost_probe.py](scripts/cost_probe.py)
 did not measure it: with six CPU breakpoints only the last-added one fired,
