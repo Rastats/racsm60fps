@@ -3,13 +3,13 @@ kind: feasibility
 title: "Render interpolation between two logic states: feasibility on LEVEL_01 (Pokitaru)"
 date: 2026-10-22
 authors: ["Claude (Opus 5.5)"]
-status: in-progress
+status: complete
 evidence: [OBSERVED, INFERRED, UNKNOWN]
 systems: [timing, rendering, entities, interpolation]
 levels: [Pokitaru]
 variants: [A0, C1, G1]
 related: [research/v2/framerate-methods-20261006/REPORT.md, research/live-tests/pokitaru/session-2026-09-30/SESSION-LOG.md, tools/runtime/pump-gate.py]
-summary: "Work in progress. Static map of the frame: update 0x1517C, then render 0x156DC, then end of frame 0x94970; entities queue draw records during update."
+summary: "Pure 60 Hz logic + interpolation: refuted (nothing to interpolate under C1). Hybrid G1 (world entities of pump 1 at 30 Hz, player/camera/animation at 60 Hz) + render-only interpolation: feasible on LEVEL_01, proven by a debugger prototype and a 1.8 KB PRX (correct world speed, 238/239 drawn changes, game state bit-identical). Owner must rule on the 30 Hz world logic."
 ---
 
 # Render interpolation between two logic states (exploratory)
@@ -17,6 +17,19 @@ summary: "Work in progress. Static map of the frame: update 0x1517C, then render
 > Exploratory study requested by Antoine. The owner (Linkinito) has not given
 > an opinion and rejects "30 Hz logic / 60 Hz display". This note tests an
 > idea, it does not propose a direction.
+
+**Verdict.**
+1. "60 Hz logic + interpolation" as such: refuted. Under C1 every system
+   already advances once per displayed frame; there is no in-between state.
+2. Hybrid feasible on LEVEL_01: world entities of pump 1 at their original
+   30 Hz (G1), player, camera and skeletal animation at 60 Hz, world
+   transforms blended in the render pass only. Proven by a debugger prototype
+   and a 1.8 KB PRX: world speed back to A0 (1.4926 against 1.4985 u/s), drawn
+   positions change on 238/239 frames, game state bit-identical to G1.
+3. It is still 30 Hz world logic, which the owner rejects today: his call.
+4. Open: real PSP CPU cost (estimated 1-4 % of a frame pair), platforms the
+   player rides, the Blaster cooldown, other levels (engine signatures found
+   in all 20 level modules, not run).
 
 ## What the idea can mean
 
@@ -156,3 +169,138 @@ frames without a pump run, and on pump frames they differ only in a 45 x 20
 pixel box around a seagull at the right edge, which moves by half a step. The
 camera turns every frame in this state, so judder is better read from the
 logged drawn transforms than from pixel differences.
+
+### 7. PRX prototype InterpRender (OBSERVED, cost INFERRED)
+
+[prx/interp_render.c](prx/interp_render.c) moves the debugger prototype into
+a PSP plugin: same G1 gate (`ir_pump`, pump 1 every second update with the
+accumulated delta), same snapshot / blend / restore around the render
+(`ir_render`), same 60 Hz exemption (an entity whose matrix changes on a frame
+without a pump run is never blended again). No libc, no thread, no imports;
+it does nothing until [scripts/ir_apply.py](scripts/ir_apply.py) writes its
+config and redirects two LEVEL_01 call sites (`0x15230` jal pump 1,
+`0x15AB0` jal render) plus the C1 core words. Built with
+`pspdev/pspdev:v20261001` (digest
+`sha256:54895e6f5afb71b8f4f6915ee6d5023e1e087ca7afdf2dcb1d7a694a5233e45f`)
+by [prx/build.sh](prx/build.sh); build outputs stay outside Git.
+
+| Item | Value |
+| --- | --- |
+| Code | 1,828 B `.text` |
+| Data | 44,488 B `.bss` (640 snapshot entries, 160 restore slots, exemption bitmap) |
+| Resident module | 0xB700 B (46.8 KB) at `0x08957100` in PPSSPP |
+
+Bench: PPSSPP 1.20.4 IR core, plugin loaded from
+`memstick/PSP/PLUGINS/InterpRender`, new game to the Pokitaru start, state
+`interp-ir-pokitaru` (base `0x09144D00`). The state holds build IR-v1, whose
+exemption test compared `hash | 1` with `hash` and exempted 211 of 253
+entities. The source is fixed (IR-v2); the bench applies the same fix to the
+resident IR-v1 as one word (`ori v1,v1,1` at module offset `0x37C` -> nop,
+guarded), runs `work/runs/interp-070..074`:
+
+| Counter (mode 2, gate + interpolation) | Value |
+| --- | --- |
+| Pump runs / skips | 374 / 375 |
+| Frames with a blend / matrices blended | 210 / 2,096 (10 per blended frame) |
+| Entities exempted as 60 Hz | 4 (as the debugger prototype) |
+| Snapshot entries | 460 |
+| Snapped (jump > 4 u), overflows | 0, 0 |
+
+Frame period over 119 frames, render exit to render exit: mean 3,703,700
+ticks (59.94 Hz) in mode 1 and mode 2, min 3,671,696, max 3,735,704; render
+exit stays at the same vblank phase (mean 3,547,595 ticks in mode 1 against
+3,548,363 in mode 2). No frame slipped in emulated time.
+
+Cost. The breakpoint-based [scripts/cost_probe.py](scripts/cost_probe.py)
+did not measure it: with six CPU breakpoints only the last-added one fired,
+even with a list round trip after each add (runs `interp-051/053/071/073`).
+PPSSPP's emulated cycle count would not price cache misses anyway. Static
+estimate from the code (INFERRED): per pair of frames, a scan of 1,162 slots
+(~10 instructions each), then for 460 active entries a 12-float copy, two
+FNV hashes and one compare pass, about 120k instructions, plus ~2,800 data
+cache misses over 128-byte records. On a 333 MHz Allegrex that is 0.4 to
+1.2 ms against 33.4 ms, so 1 to 4 % of a frame pair. Real-hardware headroom
+under C1 is UNKNOWN; the scan can be cut by hashing only entities that
+moved and by dropping the hash once the exemption set is stable.
+
+## Expected gain (against C1 on LEVEL_01)
+
+- World speed: correct by construction for every pump-1 class, measured on
+  two entities (16:0 and 40:3, both within 0.4 % of A0, C1 at x2.00).
+- Fix catalogue (INFERRED from `docs/FIX_CATALOGUE_2026-10-01.md`): about 16
+  of ~37 rows target pump-1 classes and would no longer be needed: nav, nav2,
+  cows, crab, crabtimers, TrainingBot, elevator, boatfade, age70, butterfly,
+  firerate, pathanimals, springs, luna, crank, waterfall. Not covered and
+  still needed: camera, camfilters, particles, weapons, HUD, frame clock,
+  spawn, physstep.
+- Motion: world entities drawn on 238/239 frames in half steps instead of
+  120/239 under plain G1, so G1 loses its judder.
+
+## Risks
+
+- 30 Hz world logic: AI, collisions between world entities and their timers
+  update at the original rate. Inputs that pump-1 objects read (shops,
+  teleporters, switches) are sampled at 30 Hz.
+- Platforms the player rides (boat, elevator): the platform is drawn half a
+  step behind its logic while the player is drawn at 60 Hz on top of it.
+  The boat broke under an earlier G mode; not tested here.
+- Classes split between pump 1 and the 60 Hz chain: on 2026-09-30 the Blaster
+  cooldown got longer under G1 and LaserTracer stayed x2.
+- Child entities and anything placed relative to a pump-1 matrix outside the
+  entity record are not blended; spawns and teleports rely on the 4 u snap.
+- One 60 Hz frame of display delay for world entities (not for the player or
+  camera).
+- An exception that keeps one pump-1 class at 60 Hz needs its callbacks run
+  on the skipped frame and its draw records replayed: not designed.
+- Memory: 46.8 KB resident module against a history of memory-pressure
+  crashes on hardware.
+- Only LEVEL_01 was run. [scripts/engine_signatures.py](scripts/engine_signatures.py)
+  finds the draw-queue walker, the moby draw and the pump-1 dispatch in all
+  20 LEVEL_xx modules (not in FRONTEND), so the method should carry over;
+  each level still needs its call sites and manager offset.
+
+| Module | drawq / drawmoby / pumpcb (RVA) |
+| --- | --- |
+| LEVEL_01 | 0x6BB5C / 0x6F534 / 0x6B9B0 |
+| LEVEL_02 | 0x71A2C / 0x755AC / 0x71880 |
+| LEVEL_03 | 0x6B6F0 / 0x6F200 / 0x6B544 |
+| LEVEL_04 | 0x6E988 / 0x7251C / 0x6E7DC |
+| LEVEL_05 | 0x69B18 / 0x6D654 / 0x6996C |
+| LEVEL_06 | 0x66A90 / 0x69BD4 / 0x668E4 |
+| LEVEL_07 | 0x6D538 / 0x70F78 / 0x6D38C |
+| LEVEL_08 | 0x73398 / 0x76F94 / 0x731EC |
+| LEVEL_09 | 0x68830 / 0x6C244 / 0x68684 |
+| LEVEL_10 | 0x6BEE4 / 0x6F924 / 0x6BD38 |
+| LEVEL_15 | 0x5491C / 0x586D4 / 0x54770 |
+| LEVEL_16 | 0x5D7C8 / 0x61100 / 0x5D61C |
+| LEVEL_17 | 0x5D47C / 0x60D74 / 0x5D2D0 |
+| LEVEL_18 | 0x5D6F0 / 0x60FE8 / 0x5D544 |
+| LEVEL_19 | 0x5EDA8 / 0x626A0 / 0x5EBFC |
+| LEVEL_20 | 0x52994 / 0x557A4 / 0x527E8 |
+| LEVEL_21 | 0x5491C / 0x586D4 / 0x54770 |
+| LEVEL_22 | 0x5FCC0 / 0x62C50 / 0x5FB14 |
+| LEVEL_23 | 0x63E20 / 0x66E90 / 0x63C74 |
+| LEVEL_24 | 0x6637C / 0x6946C / 0x661D0 |
+
+## Why this is not "30 Hz logic / 60 Hz display"
+
+The rejected scheme runs the whole game at 30 Hz and shows each image twice
+or interpolates everything, including the player and the camera, so input
+latency and camera motion stay at 30 Hz. Here the player, camera, input,
+weapons and skeletal animation keep the patch's 60 Hz; only the world
+entities of pump 1 return to the rate their code was written for, and only
+their drawing is interpolated. It is a split by system, not a split between
+logic and display. The world AI still ticks at 30 Hz, so it remains the
+owner's decision whether that is acceptable.
+
+## Questions for the owner
+
+1. Would world entities of pump 1 at 30 Hz, with player, camera and animation
+   at 60 Hz and interpolated drawing, be acceptable to you?
+2. Is the "30 Hz island" of InterpGate IG-v24 a similar mechanism, and could
+   its sources be shared?
+3. Which pump-1 classes interact with the player at 60 Hz in your experience
+   (Blaster cooldown, projectiles, platforms, shops, teleporters)?
+4. Could you share a savestate on the boat or an elevator, to test a platform
+   the player rides?
+5. What CPU headroom does the 60 FPS patch leave on real PSP hardware?
