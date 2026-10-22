@@ -7,13 +7,20 @@ stride 0x50; group +0x0C entity array (stride 0x80), +0x1C update callback,
 +0x3C capacity. Entity position f32 x/y/z at +0x30 (read by the pump's
 distance check). Player position: module+0x337940 +0x30.
 
-Class names need the research atlas, absent from the public repository, so
-groups are identified by callback RVA. Guesses from code layout were wrong
-on 2026-10-20 (state pokitaru-blaster, checked by teleport + window capture):
-  0x1234D0  Gadgetron vendor, not a crab
-  0x126F28, 0x122820  entities in the sea, not crabs
-  0x155CE4  not a solid platform (the player falls through at its +0x30)
-Crab and Lvl3Elevator groups are still UNKNOWN.
+Class names: research/v2/decomp-summary/level01-class-updates.json maps
+each class to its update (= group callback). Checked live on 2026-10-22
+(research/static/2026-10-22-ghidra-crab-elevator/REPORT.md):
+  0x126F28  Crab (58 slots; the 2026-10-20 "entities in the sea" were real
+            crabs. Crabs stay idle (state +0x45 = 1 or 4) until the player
+            enters their territory volume, pvar(+0x54)+0x10)
+  0x156710  Lvl3Elevator (1 instance, the Pokitaru elevator)
+  0x1234D0  Gadgetron vendor (2026-10-20)
+`list` skips slots whose active bit is clear unless --all is given.
+
+Teleport writes every player position copy (+0x30, +0x70, +0x26C, +0x338,
++0xA88, and the y words +0x2D0/+0x2D4). Writing +0x30 alone keeps x/z but the
+game rebuilds y from the copies; at another height the player falls through
+the ground and respawns (2026-10-22). Aim slightly above the ground.
 
 Usage:
   python tools/bench/entities.py list [--group 0x1234D0] [--near 30]
@@ -24,6 +31,7 @@ import json
 import math
 import struct
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -32,6 +40,9 @@ from ppsspp_bench import Debugger, DEFAULT_PORT  # noqa: E402
 
 MANAGER = 0x2CA0D0
 PLAYER, POS = 0x337940, 0x30
+POS_COPIES = (0x30, 0x70, 0x26C, 0x338, 0xA88)   # x, y, z triples
+Y_COPIES = (0x2D0, 0x2D4)
+ACTIVE = 0x1                                    # moby +0x64 bit 0
 
 
 def groups(d, base):
@@ -51,7 +62,7 @@ def player_pos(d, base):
     return list(struct.unpack('<3f', d.read(base + PLAYER + POS, 12)))
 
 
-def listing(d, base, only=None, near=None):
+def listing(d, base, only=None, near=None, everything=False):
     p = player_pos(d, base)
     rows = []
     for g in groups(d, base):
@@ -61,16 +72,35 @@ def listing(d, base, only=None, near=None):
             continue
         for k in range(g['capacity']):
             e = g['entities'] + k * 0x80
+            if not everything and not d.u32(e + 0x64) & ACTIVE:
+                continue
             x, y, z = struct.unpack('<3f', d.read(e + 0x30, 12))
             if not all(math.isfinite(v) for v in (x, y, z)):
                 continue
             dist = math.dist(p, (x, y, z))
             if near is None or dist <= near:
                 rows.append({'group': g['i'], 'callback': hex(g['callback']) if g['callback'] is not None else None,
-                             'slot': k, 'entity': hex(e), 'pos': [round(x, 3), round(y, 3), round(z, 3)],
+                             'slot': k, 'entity': hex(e), 'state': d.read(e + 0x45, 1)[0], 'pos': [round(x, 3), round(y, 3), round(z, 3)],
                              'dist': round(dist, 2)})
     rows.sort(key=lambda r: r['dist'])
     return {'player': [round(v, 3) for v in p], 'entities': rows}
+
+
+def teleport(d, base, to):
+    """TEST AID: move the player to `to` (x, y, z); returns the position before."""
+    pl = base + PLAYER
+    before = player_pos(d, base)
+    words = [struct.unpack('<I', struct.pack('<f', v))[0] for v in to]
+    d.pause()
+    try:
+        for off in POS_COPIES:
+            for k in range(3):
+                d.write_u32(pl + off + 4 * k, words[k])
+        for off in Y_COPIES:
+            d.write_u32(pl + off, words[1])
+    finally:
+        d.resume()
+    return before
 
 
 def main():
@@ -80,21 +110,17 @@ def main():
     ls = sub.add_parser('list')
     ls.add_argument('--group', type=lambda s: int(s, 0))
     ls.add_argument('--near', type=float)
+    ls.add_argument('--all', action='store_true', help='include slots whose active bit is clear')
     tp = sub.add_parser('teleport')
     tp.add_argument('--to', type=float, nargs=3, required=True)
     a = ap.parse_args()
     with Debugger(a.port).connect() as d:
         base = d.module('rcp1')['address']
         if a.cmd == 'list':
-            print(json.dumps(listing(d, base, a.group, a.near), indent=1))
+            print(json.dumps(listing(d, base, a.group, a.near, a.all), indent=1))
         else:
-            before = player_pos(d, base)
-            d.pause()
-            try:
-                for k, v in enumerate(a.to):
-                    d.write_u32(base + PLAYER + POS + 4 * k, struct.unpack('<I', struct.pack('<f', v))[0])
-            finally:
-                d.resume()
+            before = teleport(d, base, a.to)
+            time.sleep(0.5)
             print(json.dumps({'before': before, 'after': player_pos(d, base)}))
 
 

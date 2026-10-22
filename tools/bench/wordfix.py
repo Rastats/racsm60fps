@@ -76,7 +76,8 @@ def apply(d, core, fixes):
         rva, orig, new = DATA[name]
         want[rva] = ({orig, new}, new if name in fixes else orig)
     writes, refresh = [], 0
-    d.pause()
+    if not d.cpu().get('stepping'):    # already stopped (e.g. at a breakpoint): no ack would come
+        d.pause()
     try:
         # Phase 1: check every guard before writing anything (all-or-nothing).
         plan = []

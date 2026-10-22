@@ -19,7 +19,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from ppsspp_bench import Debugger, DEFAULT_PORT  # noqa: E402
+from ppsspp_bench import Debugger, DEFAULT_INSTANCE, DEFAULT_PORT  # noqa: E402
 import states  # noqa: E402
 import wordfix  # noqa: E402
 import fire_rate  # noqa: E402
@@ -35,6 +35,7 @@ def parse(config):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--port', type=int, default=DEFAULT_PORT)
+    ap.add_argument('--instance', default=str(DEFAULT_INSTANCE), help='PPSSPP instance that owns --port (states load there)')
     ap.add_argument('--state', required=True)
     ap.add_argument('--seconds', type=float, default=6.0)
     ap.add_argument('--settle', type=float, default=1.0, help='wall seconds after loading the state')
@@ -50,7 +51,7 @@ def main():
     for rep in range(a.repeat):
         for config in a.configs:
             core, fixes = parse(config)
-            states.load(a.state)
+            states.load(a.state, a.instance)
             time.sleep(a.settle)
             with Debugger(a.port).connect() as d:
                 d.release_all()
