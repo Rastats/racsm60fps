@@ -4,7 +4,8 @@
 Static map (research/static/2026-10-22-ghidra-crab-elevator/REPORT.md):
 - update 0x156710 (pump-1 group callback), initializer 0x1562DC, reached only
   through the class descriptor (no direct caller); it runs when the level's
-  mobys are created, so every savestate taken in Pokitaru already holds the
+  mobys are created and again when Ratchet respawns (OBSERVED), so every
+  savestate taken in Pokitaru already holds the
   per-call step.
 - moby +0x45 state: 0 idle, 1 moving, 2 arrived (return trip), 3 waiting.
   The ride starts when the player stands on the elevator (module+0x337C68 ==
@@ -29,7 +30,9 @@ Subcommands:
            It cannot read the screen: on a fresh memstick drive the language
            screen, system dialogs (circle) and "New Game" by hand, then run it
            with --buttons cross,start. Move earlier saves aside first (README
-           pitfall 17). 2026-10-22: C1+elevator applied here gave step 1/600
+           pitfall 17). Respawn route, no menus: --state ghidra-crab --buttons ''
+           (the crabs kill Ratchet; the re-init is hit about 14 s later).
+           2026-10-22: C1+elevator applied at the hit gave step 1/600
            and a 10.01 s ride (state ghidra-elev-c1fix).
 
 Usage:
@@ -143,7 +146,10 @@ def cmd_preinit(a):
     core, *fixes = a.config.split('+')
     buttons = [b for b in a.buttons.split(',') if b]
     bp = LEVEL01_BASE + INIT
-    log = {'config': a.config, 'breakpoint': hex(bp), 'presses': 0, 'foreignHits': 0}
+    log = {'config': a.config, 'breakpoint': hex(bp), 'presses': 0, 'foreignHits': 0, 'state': a.state}
+    if a.state:                       # respawn route: a state where Ratchet dies (ghidra-crab)
+        states.load(a.state, a.instance)
+        time.sleep(1.0)
     with Debugger(a.port).connect() as d:
         d.add_cpu_breakpoint(bp)
         try:
@@ -153,9 +159,10 @@ def cmd_preinit(a):
                     raise SystemExit(json.dumps({'result': 'TIMEOUT', **log}))
                 ev = d.wait_event('cpu.stepping', timeout=a.every)
                 if ev is None:
-                    d.press(buttons[i % len(buttons)], 3)
-                    log['presses'] += 1
-                    i += 1
+                    if buttons:
+                        d.press(buttons[i % len(buttons)], 3)
+                        log['presses'] += 1
+                        i += 1
                     continue
                 pc = int(ev['pc'])
                 mods = [m for m in d.modules() if m['name'] == 'rcp1']
@@ -187,7 +194,8 @@ def main():
     r.add_argument('--out', type=Path, required=True)
     p = sub.add_parser('preinit')
     p.add_argument('--config', required=True)
-    p.add_argument('--buttons', default='circle,start', help='buttons pressed in turn until the hit')
+    p.add_argument('--state', help='respawn route: load this state (Ratchet must die there, e.g. ghidra-crab) instead of booting')
+    p.add_argument('--buttons', default='circle,start', help='buttons pressed in turn until the hit (empty: none)')
     p.add_argument('--every', type=float, default=3.0, help='seconds between presses')
     p.add_argument('--timeout', type=float, default=600.0)
     a = ap.parse_args()

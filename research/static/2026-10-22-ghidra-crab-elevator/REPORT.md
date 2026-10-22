@@ -4,7 +4,7 @@ title: "Crab and Pokitaru elevator located (Ghidra LEVEL_01) and measured on the
 date: 2026-10-22
 authors: ["Claude (Opus 5.5)"]
 related: [tools/bench/README.md, research/live-tests/pokitaru/session-2026-10-20-bench/REPORT.md, research/v2/crab-timer-audit-20261001/REPORT.md, patches/experimental/lvl3-elevator-halfstep/REPORT.md, docs/FIX_CATALOGUE_2026-10-01.md]
-summary: "Both blockers of 2026-10-20 are lifted. Crab = group callback 0x126F28, Lvl3Elevator = 0x156710 (both already in level01-class-updates.json). Crab: C1+crab+crabtimers lands every hit 0.9008 s after the attack onset with a 3.370 s hit interval (A0 0.9009 s / 3.337 s; C1 3.003 s). Elevator: A0 10.01 s, C1 5.005 s; the `elevator` fix acts only at level creation; applied before the initializer from a cold boot, C1+elevator rides in 10.01 s (step 1/600)."
+summary: "Both blockers of 2026-10-20 are lifted. Crab = group callback 0x126F28, Lvl3Elevator = 0x156710 (both already in level01-class-updates.json). Crab: C1+crab+crabtimers lands every hit 0.9008 s after the attack onset with a 3.370 s hit interval (A0 0.9009 s / 3.337 s; C1 3.003 s). Elevator: A0 10.01 s, C1 5.005 s; the `elevator` fix acts only at level creation; applied before the initializer from a cold boot, C1+elevator rides in 10.01 s (step 1/600); the initializer also runs on respawn, so any Pokitaru state where Ratchet dies is a 'before init' state."
 ---
 
 # Crab and Pokitaru elevator: located and measured (2026-10-22)
@@ -32,9 +32,14 @@ summary: "Both blockers of 2026-10-20 are lifted. Crab = group callback 0x126F28
   stopping on the initializer and applying `C1+elevator` there makes it
   compute 1/600 (it read 0 before: init not yet run) and the ride takes
   10.01 s at 59.94 updates/s (2 runs, OBSERVED). Saved as `ghidra-elev-c1fix`.
+  Cheaper route (OBSERVED): the initializer runs again when Ratchet respawns.
+  `elevator_probe.py preinit --state ghidra-crab --buttons ''` lets the crabs
+  kill him, stops at the re-init 13.75 s later, applies the config there
+  (step 0 -> 1/600) and the ride then takes 10.01 s.
 - **Riding to the top ends the level.** At progress 0.74 a story cutscene
   freezes the game and the level module is replaced (`rcp1` 0x46B900 ->
-  0x484B00), and the game writes a save. A full ride is not timeable end to
+  0x484B00); a save file appeared in the instance's memstick at that time
+  (INFERRED: written at the transition). A full ride is not timeable end to
   end; the probe measures the per-update step and the update rate instead.
 
 ## 1. Elevator (Lvl3Elevator)
@@ -59,14 +64,25 @@ Live values at Pokitaru (OBSERVED, state `pokitaru-blaster`): moveTime 10.0,
 step 0.0033333 (1/300), progress 0, state 0, options `00 01 00 00 01 01 00`
 (`+0x22` = 1: starts when the player stands on it).
 
-**When does it initialize?** The step is already 1/300 in every Pokitaru
-savestate examined, the initializer has no caller other than the descriptor,
-and it sets the position from the path's first point: it runs when the level
-creates its mobys (INFERRED from code + OBSERVED value; a respawn or
-checkpoint reload was not tested). "Before init" therefore means "before
-LEVEL_01 finishes loading". `elevator_probe.py preinit` gets there from a cold
-boot with an execute breakpoint on `0x1562DC` and applies the configuration
-at the hit, before the step is computed. Menu path on a fresh memstick
+**When does it initialize?** OBSERVED twice with an execute breakpoint on
+`0x1562DC` (LEVEL_01 resident, a0 = the elevator moby, step read 0 at the
+hit, i.e. the moby was just created):
+- at level creation from a cold boot, before the player has control, with
+  the elevator 140 u away (so not on approach);
+- on respawn: in `ghidra-crab` with no input, the crabs bring HP from 4 to 0,
+  the hit comes 13.75 s after the load, then Ratchet reappears at the
+  checkpoint (14.04, -3.81, -5.54) with HP 5 (`work/runs/ghidra-checks-respawn.json`).
+The initializer has no direct caller (only the class descriptor), and it
+resets progress and the platform position. "Before init" therefore means
+"before LEVEL_01 is created or before the next respawn". `elevator_probe.py preinit` arms an execute breakpoint on `0x1562DC` and
+applies the configuration at the hit, before the step is computed: either
+from a cold boot (pressing `--buttons`), or with `--state ghidra-crab
+--buttons ''` (respawn route, about 15 s, no menus).
+The cold-boot run reached the hit with `preinit`, but `wordfix.apply` then
+timed out waiting for a pause acknowledgement (the CPU was already stopped);
+that run was finished by an equivalent scratch script applying the same
+`wordfix` call at the same stop. `wordfix.apply` was then fixed and the
+respawn-route run is the committed tool end to end. Menu path on a fresh memstick
 (2026-10-22): language (cross), the system "no data" dialog and "Save
 completed" (circle: PPSSPP's dialogs confirm with circle here), main menu
 "New Game" (down, cross), new save slot (cross); intro skipped with cross.
@@ -82,9 +98,11 @@ menus were driven by hand with window captures; from "New Game" on,
 | C1 | `pokitaru-blaster` | 1/300 | 59.94 | 5.005 |
 | C1+elevator, fix applied after init | `pokitaru-blaster` | 1/300 | 59.94 | 5.005 |
 | C1+elevator, fix applied at the init breakpoint | `ghidra-elev-c1fix` (cold boot) | 1/600 | 59.94 | 10.010, 10.010 |
+| C1+elevator, fix applied at the respawn re-init (`preinit --state ghidra-crab`) | live after respawn | 1/600 | 59.94 | 10.010 |
 | A0+elevator (control, wrong pairing) | `ghidra-elev-c1fix` | 1/600 | 29.97 | 20.020 |
 
-Runs `work/runs/ghidra-elev-002`, `-003`; preinit log
+Runs `work/runs/ghidra-elev-002`, `-003`, `-004-respawn`; preinit logs
+`work/runs/ghidra-elev-preinit-respawn.json` and
 `work/runs/ghidra-elev-preinit-c1fix.json`: at the hit (pc = base +
 `0x1562DC`, a0 = moby `0x096FD5F0`) the step was 0.0 and the word at
 `0x1563E8` `0x3C063D08`; after `wordfix` C1+elevator the word was
@@ -115,6 +133,14 @@ interval; cross-checked with 1 / (progress per emulated second).
 
 Data: moby `+0x54` = class data (territory volume `+0x10`, scale `+0x44`),
 moby `+0x58` = per-instance pvar (`+0x60` attack counter, `+0x64` cooldown).
+
+Where crab instances live (OBSERVED, base `0x09139D00` without plugins):
+module+`0x2CA0D0` -> manager; manager `+0x34` group array (stride 0x50,
+count `+0x38`); the group whose `+0x1C` = base+`0x126F28`
+(match the callback, not the group index); group `+0x0C` ->
+moby array, stride 0x80, 58 slots (slot 0 at `0x096F22F0`); moby `+0x30`
+position, `+0x45` state, `+0x58` pvar (slot 0: `0x09D0A510`). Crabs 6-8 of
+`ghidra-crab`: mobys `0x096F25F0`, `0x096F2670`, `0x096F26F0`.
 Why the 2026-10-20 breakpoint on `0x1254CC` stayed silent: no crab had the
 player in its territory (all in states 1 / 4).
 
@@ -181,11 +207,12 @@ one 60 Hz frame early, not 2x (INFERRED; the crab path calls it with 0).
 ## 5. Evidence levels
 
 - OBSERVED: group callbacks and live fields above; all timings in sections 1-2;
-  cutscene + module switch at progress 0.74; position copies.
+  initializer hits at level creation and on respawn; cutscene + module
+  switch at progress 0.74; position copies.
 - DEDUCED from decompiled code: state meanings, trigger test, step formula,
   initializer reached only through the descriptor.
-- INFERRED: initializer runs at level creation only (not re-run on respawn;
-  untested); `0x6AA08` look-ahead impact.
+- INFERRED: `0x6AA08` look-ahead impact; the save written at the level
+  transition.
 - UNKNOWN: which crab-state reload sites matter outside this fight; the
   return trip of the elevator (blocked by the end-of-level cutscene).
 
@@ -194,8 +221,9 @@ one 60 Hz frame early, not 2x (INFERRED; the crab path calls it with 0).
 1. Is the Pokitaru elevator the end-of-level lift (cutscene at the top, then
    the next module 0x484B00)? Your 10.01 / 5.00 s: measured on a full ride
    after the cutscene was seen, or from the step?
-2. Does Lvl3Elevator re-initialize on death or checkpoint reload? A cheaper
-   "before init" path than a cold boot would help the bench.
+2. The elevator re-initializes on respawn (OBSERVED here). Is there another
+   re-init (checkpoint reload, menu "restart level") the plugin must handle
+   when it switches the step between A0 and C1 at run time?
 3. In C1 the first crab hit lands 0.80 s after the attack onset, not 0.45 s
    (27 calls at 60 Hz): does the hitbox `0xEE9C` follow the claw animation?
 4. `crabtimers` + `crab` match A0 within 1 % here; any crab state you still

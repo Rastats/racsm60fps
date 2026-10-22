@@ -158,9 +158,11 @@ A0 (2 vblanks per frame) and C1 (1 vblank per frame).
     (`ppsspp-1`) whatever the port, so a second instance measured a state
     loaded elsewhere.
 17. Riding the Pokitaru elevator to the top ends the level: cutscene at
-    progress 0.74, new module (`rcp1` size 0x484B00), and a save file appears
-    in the instance's memstick. Keep `elevator_probe.py ride` short (3 s) and
-    move such saves aside before a "new game" boot.
+    progress 0.74, new module (`rcp1` size 0x484B00), and a save file appeared
+    in the instance's memstick then. Keep `elevator_probe.py ride` short (3 s) and
+    move such saves aside before a "new game" boot. The elevator initializer
+    also runs on respawn: `elevator_probe.py preinit --state ghidra-crab
+    --buttons ''` applies a config before it without a cold boot.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.
