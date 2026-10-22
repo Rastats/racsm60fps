@@ -180,7 +180,11 @@ EU health cheats (Pokitaru to Quadrona) are reproduced exactly.
 17. LEVEL_15 and LEVEL_21 have the same `rcp1` size (0x3FC700) and differ
     by 14 bytes at image offset 0x235930; their ports are identical, so
     `levels.py` returns one profile named `LEVEL_15/LEVEL_21`. The ISO has
-    no LEVEL_11 to LEVEL_14.
+    no LEVEL_11 to LEVEL_14 (the path table names LEVEL_13 and LEVEL_14).
+18. The game autosaves on arrival (memstick `SAVEDATA/UCES00420DATA0`), and
+    the title screen then resumes that save, which loads the save's level
+    entry instead of the LEVEL_01 one. `level_route.py` therefore redirects
+    every LEVEL entry and restores them from BOOT.BIN.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

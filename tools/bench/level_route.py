@@ -10,10 +10,17 @@ The game state stays the new-game one: wrench, Blaster and Bomb Glove owned.
 
 OBSERVED 2026-10-22: `go --to 02` from boot reaches Ryllus (rcp1 0x484B00,
 base 0x09139D00, the same base as Pokitaru), playable after the arrival
-cutscene. Other targets are untested.
+cutscene. `go --to 22` reaches the Kalidon skyboard (rcp1 0x3CF100) the same
+way. Other targets are untested.
+
+Every LEVEL entry is redirected, not only LEVEL_01: once the game has saved
+(it autosaves on arrival, memstick SAVEDATA/UCES00420DATA0), the title screen
+resumes that save and loads the save's level entry (OBSERVED 2026-10-22: with
+only LEVEL_01 redirected to 22, the game resumed Ryllus). Restore uses the
+plain BOOT.BIN copy.
 
   go --to NN      redirect, press through the frontend until the module is
-                  resident (advance_to_level.py), then restore the entry
+                  resident (advance_to_level.py), then restore the entries
   redirect --to NN / restore / show
 
 Run it right after `ppsspp_bench.py launch` (the frontend must still be on
@@ -32,6 +39,22 @@ from ppsspp_bench import Debugger, DEFAULT_PORT, BenchError  # noqa: E402
 
 NEEDLE = b'disc0:/PSP_GAME/USRDIR/BIN/LEVEL_'
 ENTRY = 40
+BOOT_LEVEL01 = 0x3A05C          # BOOT.BIN file offset of the LEVEL_01 entry
+
+
+def find_entries(d):
+    """Addresses of every LEVEL_NN path entry inside the main module (`mcp`)."""
+    mcp = d.module('mcp')
+    lo, hi = mcp['address'], mcp['address'] + mcp['size']
+    first = find_table(d)
+    out = []
+    a = first
+    while a < hi and d.read(a, len(NEEDLE)) == NEEDLE:
+        out.append(a)
+        a += ENTRY
+    if not lo <= first < hi or not out:
+        raise BenchError('level path table not found in mcp')
+    return out
 
 
 def find_table(d):
@@ -71,10 +94,36 @@ def write_digits(d, addr, digits):
         raise BenchError('read-back mismatch')
 
 
+def boot_digits(n):
+    """Original digits of the first `n` LEVEL entries, from the plain BOOT.BIN copy."""
+    import level_port
+    boot = (level_port.ROOT / 'game/iso/PSP_GAME/SYSDIR/BOOT.BIN').read_bytes()
+    out = []
+    for i in range(n):
+        e = boot[BOOT_LEVEL01 + i * ENTRY:BOOT_LEVEL01 + (i + 1) * ENTRY]
+        if not e.startswith(NEEDLE):
+            raise BenchError(f'BOOT.BIN entry {i} is not a level path')
+        out.append(e[len(NEEDLE):len(NEEDLE) + 2].decode())
+    return out
+
+
+def redirect_all(d, digits):
+    """Point every LEVEL entry at LEVEL_<digits>: a new game loads the LEVEL_01
+    entry, but a title screen that resumes a save loads the save's level entry."""
+    for addr in find_entries(d):
+        write_digits(d, addr, digits)
+
+
+def restore_all(d):
+    entries = find_entries(d)
+    for addr, digits in zip(entries, boot_digits(len(entries))):
+        write_digits(d, addr, digits)
+
+
 def level_size(stem):
     import levels
-    for size, s in levels._sizes().items():
-        if s == stem:
+    for size, stems in levels._sizes().items():
+        if stem in stems:
             return size
     raise BenchError(f'{stem}.PRX not found')
 
@@ -89,19 +138,18 @@ def main():
     if a.action in ('go', 'redirect') and not (a.to and len(a.to) == 2 and a.to.isdigit()):
         ap.error('--to NN is required')
     with Debugger(a.port).connect() as d:
-        addr = find_table(d)
-        if a.action == 'show':
-            print(json.dumps({'entry': hex(addr), 'path': entry(d, addr)}))
-            return 0
-        write_digits(d, addr, '01' if a.action == 'restore' else a.to)
-        print(json.dumps({'entry': hex(addr), 'path': entry(d, addr)}))
+        if a.action == 'restore':
+            restore_all(d)
+        elif a.action != 'show':
+            redirect_all(d, a.to)
+        print(json.dumps({hex(x): entry(d, x)[len(NEEDLE) - 6:] for x in find_entries(d)}))
     if a.action != 'go':
         return 0
     size = level_size(f'LEVEL_{a.to}')
     r = subprocess.run([sys.executable, str(HERE / 'advance_to_level.py'), '--port', str(a.port),
                         '--size', hex(size), '--buttons', 'cross,start,cross', '--timeout', str(a.timeout)])
     with Debugger(a.port).connect() as d:
-        write_digits(d, find_table(d), '01')
+        restore_all(d)
     return r.returncode
 
 
