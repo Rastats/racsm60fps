@@ -19,7 +19,11 @@ ap.add_argument('--state', required=True)
 ap.add_argument('--config', default='A0')
 ap.add_argument('--gaps', default='8,20,40,56,64')
 ap.add_argument('--out', type=Path, required=True)
+ap.add_argument('--force-mask', action='store_true',
+                help='OR 0x10 (up) into the button-enable mask read by 0x68360 each frame: '
+                     'the race leaves it at 0x2000, so 0x68260(0x10) never returns the pad word')
 a = ap.parse_args()
+a.out.parent.mkdir(parents=True, exist_ok=True)
 gaps = [int(g) for g in a.gaps.split(',')]
 if a.state != '-':
     states.load(a.state)
@@ -29,6 +33,10 @@ with Debugger(DEFAULT_PORT).connect() as d:
     core, *fx = a.config.split('+')
     applied = wordfix.apply(d, core, set(fx))
     base, prof = levels.profile(d)
+    # mask address from the relocated `lui a1,hi / lw a1,lo(a1)` at 0x68360 (see paddiag.py)
+    hi, lo = (d.u32(base + 0x68360) & 0xFFFF) << 16, d.u32(base + 0x68364) & 0xFFFF
+    mask_addr = (hi + (lo - 0x10000 if lo & 0x8000 else lo)) & 0xFFFFFFFF
+    forced = []
 
     def i32(rva):
         return struct.unpack('<i', d.read(base + rva, 4))[0]
@@ -55,7 +63,11 @@ with Debugger(DEFAULT_PORT).connect() as d:
             start.append(v)
             results.append({'startV': v, 'startCount': rf})
         rel = v - start[0]
-        trace.append([rel, rf, i32(0x240648), i32(0x24064C)])
+        mask = d.u32(mask_addr)
+        if a.force_mask and not mask & 0x10:
+            d.write_u32(mask_addr, mask | 0x10)
+            forced.append(rel)
+        trace.append([rel, rf, i32(0x240648), i32(0x24064C), mask])
         while sched and sched[0][0] <= rel:
             _, act, k = sched.pop(0)
             if act in ('down', 'down2'):
@@ -75,7 +87,9 @@ with Debugger(DEFAULT_PORT).connect() as d:
     loop.at_end(lambda: d.release_all())
     loop.run(total / 60 + 20, wall_limit=(total / 60 + 20) * 60)
 a.out.write_text(json.dumps({'config': a.config, 'applied': applied['fixes'], 'writes': len(applied['writes']),
+                             'forceMask': a.force_mask, 'maskAddr': hex(mask_addr), 'maskForcedAt': forced,
                              'results': results, 'trace': trace}) + '\n')
+print('mask', hex(mask_addr), 'forced', len(forced), 'times')
 for r in results:
     if 'read' in r:
         print(a.config, 'gap', r['gap'], 'accepted' if r['accepted'] else 'refused', r)
