@@ -15,8 +15,8 @@ moment, so an input script means the same thing in A0 (30 Hz) and C1 (60 Hz).
 Usage (library):
     loop = BreakLoop(d, base)
     loop.watch(addr, on_change)          # on_change(tick, old, new)
-    loop.every_frame(on_frame)           # on_frame(tick, frame_value)
-    loop.run(seconds)                    # emulated seconds
+    loop.every_frame(on_frame)           # on_frame(tick, frame_value); return True to stop
+    loop.run(seconds)                    # emulated seconds (an upper bound if on_frame stops it)
 """
 import sys
 import time
@@ -134,7 +134,8 @@ class BreakLoop:
                     break
                 if ea == fc and self.frame_cb:
                     self.frames += 1
-                    self.frame_cb(t, new)
+                    if self.frame_cb(t, new) is True:   # the callback ends the run early
+                        break
                 elif ea in self.watches:
                     self.watches[ea](t, d.u32(ea), new)
                 else:

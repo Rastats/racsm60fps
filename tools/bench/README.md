@@ -58,6 +58,8 @@ Direct3D 11. The graphics backend does not change game logic.
 | `level_route.py` | reach another level from boot: redirects the LEVEL_01 module path in RAM, then presses through the frontend |
 | `level_port.py` | ports LEVEL_01 RVAs (C1 core, data addresses, `fixes.DATA`) to another level PRX by masked byte matching, offline |
 | `levels.py` | per-level profile keyed by `rcp1` size; `wordfix`, `breakloop`, `clock`, `move_probe`, `fire_rate` use it |
+| `board_probe.py` | LEVEL_22 skyboard: speed, steering, jump and race timers per config, times counted from GO |
+| `board_compare.py` | board_probe tables: metrics at equal times after GO, gap to A0, timer rates, repeat check |
 
 Typical session:
 
@@ -185,6 +187,29 @@ EU health cheats (Pokitaru to Quadrona) are reproduced exactly.
     the title screen then resumes that save, which loads the save's level
     entry instead of the LEVEL_01 one. `level_route.py` therefore redirects
     every LEVEL entry and restores them from BOOT.BIN.
+
+## Skyboard (2026-10-23)
+
+```text
+python tools/bench/states.py load --name banc-skyboard-arrive       # LEVEL_22, before the countdown
+python tools/bench/board_probe.py --state banc-skyboard-arrive --script turn --side 1 -1 \
+    --configs A0 C1 --repeat 2 --out <root>/work/runs/<new>
+python tools/bench/board_compare.py <root>/work/runs/<new>/board.json
+```
+
+Report: [research/live-tests/2026-10-23-skyboard/REPORT.md](../../research/live-tests/2026-10-23-skyboard/REPORT.md).
+
+19. The first frame after a state load is not a fixed emulated instant:
+    `states.load` and `--settle` sleep in wall time while emulation runs.
+    Scripts that depend on game events (a race start) must be counted
+    from the event, not from the first frame. `board_probe.py` counts from
+    GO, and C1 reaches GO 2.47 s earlier than A0 because the countdown is a
+    frame count.
+20. The first frames after a load can move the player (scene reset), which
+    looks like a race start. GO is accepted only once the countdown
+    (0x22DDCC) is nonzero.
+21. The number at the top right of the skyboard HUD is the board speed / 2
+    (0x22DC0C), not a timer.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

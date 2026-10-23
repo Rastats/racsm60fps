@@ -103,7 +103,7 @@ The ISO has no LEVEL_11 to LEVEL_14.
 | Projectile speed and life | - | - |
 | Timed effects (shield, buffs) | - | - |
 | Gadgets | - | - |
-| Vehicles / skyboard | n/a | n/a; LEVEL_22 clock M `banc-level22-clock`, board - |
+| Vehicles / skyboard | n/a | n/a; LEVEL_22 clock M `banc-level22-clock`, board M 2026-10-23 (`../2026-10-23-skyboard/REPORT.md`) |
 | Crab, elevator | sister session `ratchet-ghidra` | `elevator` site ported 0x16B050, not run |
 
 Port per level (`work/runs/banc-port/summary.json`):
@@ -232,8 +232,9 @@ Clock, 6 s from that state (`<root>/work/runs/banc-level22-clock.log`):
   (vblank). These are exactly the owner's LEVEL_22 cheat addresses minus
   the base.
 
-Board speed, steering, jumps and race timers were not measured. The
-arrival state is the starting point for that.
+Board speed, steering, jumps and race timers were not measured here. They
+were measured on 2026-10-23 from this state:
+[2026-10-23-skyboard/REPORT.md](../2026-10-23-skyboard/REPORT.md).
 
 ## Questions for Linkinito
 
