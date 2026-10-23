@@ -216,10 +216,20 @@ Report: [research/live-tests/2026-10-23-skyboard/REPORT.md](../../research/live-
     LEVEL_22 race, `buttons(up=True)` did not reach the D-pad double-tap
     detector 0x1056E8 (its state never changed, 2026-10-23); check the pad
     word 0x90F38 before relying on D-pad input there.
+23. An instruction whose immediate is relocated (the lo16 of a `lui`/`lw`
+    pair, e.g. LEVEL_22 0x109240) holds another word in RAM than in the
+    PRX, so `wordfix.py` refuses it ("unexpected word"): a `NATIVE` word fix
+    must sit on an unrelocated instruction or on a data word.
+24. Right after `states.load` the entity manager pointer, then the groups,
+    are not readable for up to a few seconds (`Invalid address`, then a
+    missing callback group). Wait for the groups you need before reading
+    entities (`rec.py`, 2026-10-24).
 
 LEVEL_22 native fix candidates (`C1+tapwin`, `C1+racecount`,
 `C1+boardtimers`, levels.py `NATIVE`) and their first measurements:
 [research/live-tests/2026-10-23-skyboard-finish/REPORT.md](../../research/live-tests/2026-10-23-skyboard-finish/REPORT.md).
+Race AI speed (`C1+aimove`, optional `C1+aiphys`) and the saved race time
+(`C1+racetime`, stored in A0 frames so Best Times reads right): [research/live-tests/2026-10-24-skyboard-ai/REPORT.md](../../research/live-tests/2026-10-24-skyboard-ai/REPORT.md).
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

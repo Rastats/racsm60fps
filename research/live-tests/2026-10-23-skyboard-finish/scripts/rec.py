@@ -48,6 +48,8 @@ ap.add_argument('--fin-every', type=int, default=30, help='vblanks between shots
 ap.add_argument('--save-at', type=int, default=0, help='race vblank (from GO) at which to save --save-name')
 ap.add_argument('--save-name', default='')
 ap.add_argument('--stop-on', default='', help='python expr on s (sample) that ends the run')
+ap.add_argument('--watch', type=lambda s: int(s, 16), action='append', default=[],
+                help='absolute address: log PC, ra and new value of every store that changes it (events)')
 ap.add_argument('--out', type=Path, required=True)
 a = ap.parse_args()
 a.out.mkdir(parents=True, exist_ok=True)
@@ -67,7 +69,16 @@ try:
         meta['applied'] = len(applied['writes'])
         base, prof = levels.profile(d)
         pos = base + prof['player'] + 0x30
-        grp = {g['callback']: g for g in entities.groups(d, base)}
+        for _ in range(20):        # right after a state load the entity manager can still be unset
+            try:
+                grp = {g['callback']: g for g in entities.groups(d, base)}
+                if all(cb in grp for cb in a.group):   # groups register a little after the manager
+                    break
+                time.sleep(0.5)
+            except Exception:
+                time.sleep(0.5)
+        else:
+            raise SystemExit('entity manager not readable 10 s after the state load')
         ents = [(cb, k, grp[cb]['entities'] + k * 0x80) for cb in a.group for k in range(grp[cb]['capacity'])]
         meta['ents'] = [[hex(cb), k] for cb, k, _ in ents]
         t0, cur, prev = [], {'s': None, 'b': None, 'j': None}, []
@@ -100,7 +111,7 @@ try:
             step = math.hypot(dx, dz)
             if idx[0] is None or step > 10:
                 # first frame, or a respawn: search every line in full
-                if idx[0] is not None:
+                if idx and idx[0] is not None:        # no --path: nothing to index
                     events.append({'v': v, 'respawn': [round(c, 2) for c in p], 'from': [round(c, 2) for c in prev[0]]})
                 for li in range(L):
                     n = len(paths[li])
@@ -173,7 +184,7 @@ try:
                 events.append({'v': v, 'go': True})
             stk = steer(p, s, v) if racing else (0.0, 0.0)
             prev[:] = [p]
-            if idx[0] is not None:
+            if idx and idx[0] is not None:        # no --path: nothing to index
                 s['lapIdx'] = idx[st['line']]
             b = bool(a.boost and racing)
             j = v < st['jump_until'] - a.jump_hold // 2      # held for the first half, released for the second
@@ -189,7 +200,7 @@ try:
             # save a mid-race state
             if a.save_at and a.save_name and not st['saved'] and st['go'] is not None and v - st['go'] >= a.save_at:
                 st['saved'] = True
-                events.append({'v': v, 'save': a.save_name, 'pos': s['pos'], 'lapIdx': idx[st['line']], 'line': st['line']})
+                events.append({'v': v, 'save': a.save_name, 'pos': s['pos'], 'lapIdx': idx[st['line']] if idx else None, 'line': st['line']})
                 return True
             # finish: after GO, raceFrames frozen for 120 vblanks or reset below its last value
             # (it falls to 0 when the race ends, OBSERVED 2026-10-23 banc-skyrace-a0-boost)
@@ -213,7 +224,7 @@ try:
                 st['stuck_next'] = v + a.stuck_vb // 4
                 old = next((x for x in reversed(samples) if x['v'] <= v - a.stuck_vb), None)
                 if old and math.dist(old['pos'], p) < a.stuck_dist:
-                    events.append({'v': v, 'stuck': s['pos'], 'lapIdx': idx[st['line']], 'line': st['line']})
+                    events.append({'v': v, 'stuck': s['pos'], 'lapIdx': idx[st['line']] if idx else None, 'line': st['line']})
                     shot(f'stuck-v{v:05d}.png', s)
                     if a.stuck_stop:
                         return True
@@ -249,6 +260,12 @@ try:
 
         loop = BreakLoop(d, base)
         loop.every_frame(on_frame_timed)
+        for wa in a.watch:
+            def on_store(t, old, new, wa=wa):
+                ra = d.call('cpu.getReg', category=0, register=31)['uintValue']
+                events.append({'v': samples[-1]['v'] if samples else None, 'watch': hex(wa), 'pc': hex(int(d.cpu()['pc']) - base),
+                               'ra': hex(ra - base), 'old': old, 'new': new})
+            loop.watch(wa, on_store)
         loop.at_end(lambda: d.release_all())
         try:
             loop.run(a.seconds, wall_limit=a.seconds * 3 + 120)

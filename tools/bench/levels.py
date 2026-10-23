@@ -61,6 +61,34 @@ NATIVE = {
         # 1/30 in A0, once with 1/60 in C1. Delay slot `mov.s f12,f20` -> `add.s f12,f20,f20` (2 x delta),
         # for this call only; `substepdt` doubles the delta of the whole body.
         'boardtimers': [(0x3001C, 0x4600A306, 0x4614A300)],
+        # Race AI move 0x10B4D0 (callback group 0x108CA8, entities 0-2), once per frame: velocity
+        # entity+0x58 -> +0..8 is in units per frame (cap +0x2C, A0 constants in 1/30 steps) and the
+        # sweep 0x10C058 adds all of it to the position (step / |v|, |v| in f20). f20 = 2|v| with the
+        # distance left still |v| adds v / 2 per frame, the A0 distance per second. Accelerations unchanged.
+        'aimove': [(0x10C034, 0x46000506, 0x46000500), (0x10C048, 0xE7B4007C, 0xE7A0007C)],
+        # With aimove, the rest of 0x10B4D0 that acts once per frame on the velocity or heading, so that
+        # velocity stays in A0 units per 1/30 s. Data words read only there (checked): yaw-rate target gain
+        # and clamp 0.611 (heading turned per frame by s2+0x40) /2; throttle-spring target 0.0889 /2 (the
+        # race target; the mode-0 target 0x2409BC 0.0667 has another reader 0xF6A6C and its load 0x109240
+        # is relocated, so it is left); lateral damping 0.02 / 0.04 and normal damping 0.1 -> 1 - sqrt(1 - k);
+        # vertical step 0.00922 /2. The two springs 0xDD28 / 0xDB90 still run per frame (k, d not refitted).
+        # Race time: the player race object (*(entity+0x58)) +0x9C counts frames from GO (+1 at 0x10672C).
+        # At the finish (two copies, 0x106758 and 0x106854) it is compared with the saved best (0xE0380)
+        # and stored (0xE086C); the Best Times menu shows it x 1/30 (0xB219C) as "%2d : %02d". Here the
+        # counter is halved before the compare and the store (A0 units, so saves stay A0-compatible and
+        # the menu reads right), using the two nop delay slots of each block. The award check at 0x106B08
+        # (timer <= 6150.0 frames, 205 s at 30/s, data read only there) gets 12300.0.
+        'racetime': [(0x10676C, 0x00000000, 0x922500B1), (0x106770, 0x8E25009C, 0x8E26009C),
+                     (0x106774, 0x00A4202B, 0x00063042), (0x106778, 0x10800005, 0x00C4202B),
+                     (0x10677C, 0x00000000, 0x10800004), (0x106784, 0x922500B1, 0x00042042),
+                     (0x106868, 0x00000000, 0x922500B1), (0x10686C, 0x8E25009C, 0x8E26009C),
+                     (0x106870, 0x00A4202B, 0x00063042), (0x106874, 0x10800005, 0x00C4202B),
+                     (0x106878, 0x00000000, 0x10800004), (0x106880, 0x922500B1, 0x00042042),
+                     (0x24061C, 0x45C03000, 0x46403000)],
+        'aiphys': [(0x2409D8, 0x3F1C61AB, 0x3E9C61AB), (0x2409B8, 0x3DB60B62, 0x3D360B62),
+                   (0x2409C0, 0x3CA3D70A, 0x3C24AAE1),
+                   (0x2409C4, 0x3D23D70A, 0x3CA58313), (0x240AB8, 0x3DCCCCCD, 0x3D523176),
+                   (0x240A00, 0x3C1718CF, 0x3B9718CF)],
     },
 }
 
