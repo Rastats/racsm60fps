@@ -45,19 +45,24 @@ DATA = fx.DATA
 LEVEL01_SIZE = pg.MODULE_SIZE
 
 
-def expand(fixes):
+def expand(fixes, native=None):
     """Resolve fixes.py group names ('camera', ALIASES) to DATA names; refuse anything else.
 
-    Before 2026-10-20 apply() skipped unknown names silently, so 'C1+camera'
-    ran as plain C1.
+    `native` is the resident level's {group: [word names]} of its own candidate
+    fixes (levels.py NATIVE). Before 2026-10-20 apply() skipped unknown names
+    silently, so 'C1+camera' ran as plain C1.
     """
     out = set(fixes)
+    native = native or {}
+    for name, members in native.items():
+        if name in out:
+            out = (out - {name}) | set(members)
     if 'camera' in out:
         out = (out - {'camera'}) | set(fx.CAMERA)
     for name, members in fx.ALIASES.items():
         if name in out:
             out = (out - {name}) | set(members)
-    unknown = out - set(DATA)
+    unknown = out - set(DATA) - {m for ms in native.values() for m in ms}
     if unknown:
         raise BenchError(f'not a word-level fix: {sorted(unknown)} (wrappers/stubs need fixes.py and InterpGate)')
     return out
@@ -83,9 +88,9 @@ def core_words(base, prof):
 def apply(d, core, fixes):
     mod = d.module('rcp1')
     base = mod['address']
-    fixes = expand(fixes)
     want = {}
     if mod['size'] == LEVEL01_SIZE:
+        fixes = expand(fixes)
         exp = pg.expected(base, core)
         a0, c1 = pg.expected(base, 'A0'), pg.expected(base, 'C1')
         for rva in (pg.VBLANK, pg.DELTA, pg.LOOP):
@@ -95,6 +100,7 @@ def apply(d, core, fixes):
         # Other level: core and fixes ported from LEVEL_01 by levels.py / level_port.py.
         import levels
         prof = levels.profile_for_size(mod['size'])
+        fixes = expand(fixes, prof.get('native'))
         for rva, (w_a0, w_c1) in core_words(base, prof).items():
             want[rva] = ({w_a0, w_c1}, w_c1 if core == 'C1' else w_a0)
         table = prof['fixes']
@@ -148,14 +154,15 @@ def main():
         return
     if not a.core:
         ap.error('--core is required')
-    try:
-        fixes = expand({f for f in a.fix.split(',') if f})
-    except BenchError as e:
-        ap.error(str(e))
+    # Names are resolved by apply(), which knows the resident level and its native groups.
+    fixes = {f for f in a.fix.split(',') if f}
     if a.core == 'A0' and fixes:
         ap.error('A0 is the original game: no fixes')
     with Debugger(a.port).connect() as d:
-        print(json.dumps(apply(d, a.core, fixes)))
+        try:
+            print(json.dumps(apply(d, a.core, fixes)))
+        except BenchError as e:
+            ap.error(str(e))
 
 
 if __name__ == '__main__':

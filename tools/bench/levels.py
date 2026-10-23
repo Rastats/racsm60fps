@@ -11,7 +11,9 @@ A profile holds:
   core_file               {name: unrelocated word in the PRX}
   frame_counter, player, ammo_base, entity_manager    data RVAs
   fixes                   {fixes.DATA name: (rva, original, fixed)} for the
-                          sites ported with an identical original word only
+                          sites ported with an identical original word only,
+                          plus the level's own candidates (NATIVE below)
+  native                  {group: [names in fixes]} of those candidates
 
 How the bench reaches a level other than Pokitaru (2026-10-22): the main module
 keeps a table of 40-byte paths `disc0:/PSP_GAME/USRDIR/BIN/LEVEL_NN.PRX`
@@ -38,6 +40,28 @@ LEVEL01 = {
     'core_file': {'vblank': 0x0C06FD09, 'delta': 0x3C043D08, 'loop': 0x2A240002},
     'frame_counter': 0x2AF28C, 'player': 0x337940, 'ammo_base': 0x2AE95C, 'entity_manager': 0x2CA0D0,
     'fixes': None,        # None: fixes.DATA applies as is
+}
+
+# Candidate fixes read in one level's own code, not ported from LEVEL_01:
+# level -> {group: [(rva, original word, fixed word)]}. Each word joins the
+# profile's `fixes` as `<group>@<rva>`, and `native` maps the group to them, so
+# `C1+tapwin` works like a fixes.py alias. Static reading of LEVEL_22.PRX, 2026-10-23.
+NATIVE = {
+    'LEVEL_22': {
+        # D-pad up / down double-tap (0x1056E8, once per frame from GO): counter 0x240658 +1 per call
+        # (0x1057F4); a second press counts when the gap is > 5 and < 30 calls (`addiu a2,a0,-5` and
+        # `addiu a2,a0,-0x1E`, once per button). 10 and 60 restore the A0 window in seconds at 60 calls/s.
+        'tapwin': [(0x10574C, 0x2486FFFB, 0x2486FFF6), (0x105758, 0x2486FFE2, 0x2486FFC4),
+                   (0x1057B8, 0x2486FFFB, 0x2486FFF6), (0x1057C4, 0x2486FFE2, 0x2486FFC4)],
+        # Race countdown 0x22DDCC, -1 per frame (0x95988), is set from sixtieths / 60 x 30.0
+        # (`lui a0,0x41F0` at 0x95598, store 0x955B0): x 60.0, as in the frames30 family.
+        'racecount': [(0x95598, 0x3C0441F0, 0x3C044270)],
+        # Player timers +0xA00/+0xA08/+0xA0C/+0xA14/+0xA18 -= f12 (0x28B34, writer 0x28B58 for +0xA08),
+        # called at 0x30018 in the substep body 0x2FE6C with the substep delta: twice per frame with
+        # 1/30 in A0, once with 1/60 in C1. Delay slot `mov.s f12,f20` -> `add.s f12,f20,f20` (2 x delta),
+        # for this call only; `substepdt` doubles the delta of the whole body.
+        'boardtimers': [(0x3001C, 0x4600A306, 0x4614A300)],
+    },
 }
 
 
@@ -75,6 +99,14 @@ def _ported(stem):
         else:
             _rva, orig, new = fx.DATA[name]
             prof['fixes'][name] = (int(r['rva'], 16), orig, new)
+    prof['native'] = {}
+    for group, words in NATIVE.get(stem, {}).items():
+        for rva, orig, new in words:
+            if dst.word(rva) != orig:
+                raise BenchError(f'{stem}: native fix {group} expects 0x{orig:08X} at +0x{rva:X}, '
+                                 f'the PRX holds 0x{dst.word(rva):08X}')
+            prof['fixes'][f'{group}@{rva:#x}'] = (rva, orig, new)
+        prof['native'][group] = [f'{group}@{rva:#x}' for rva, _, _ in words]
     del src
     return prof
 

@@ -118,12 +118,18 @@ class BreakLoop:
                     raise BenchError(f'wall-clock limit {wall_limit:.0f} s reached before {seconds} emulated s')
                 ev = d.wait_event('cpu.stepping', timeout=1.0)
                 if ev is None:                 # no event for a while: check the clock
-                    if int(d.cpu()['ticks']) - t_start >= span:
+                    st = d.cpu()
+                    if int(st['ticks']) - t_start >= span:
                         d.pause()
                         stepping = True
                         t = int(d.cpu()['ticks'])
                         break
-                    continue
+                    if not st.get('stepping'):
+                        continue
+                    # Stopped without a cpu.stepping event reaching us: handle the break from the
+                    # status, else the loop idles until the wall limit (OBSERVED 2026-10-23, a
+                    # 130 s LEVEL_22 run stopped for 75 min at a frame-counter break).
+                    ev = st
                 stepping = True
                 self.breaks += 1
                 t = int(ev['ticks'])

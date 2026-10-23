@@ -210,6 +210,16 @@ Report: [research/live-tests/2026-10-23-skyboard/REPORT.md](../../research/live-
     (0x22DDCC) is nonzero.
 21. The number at the top right of the skyboard HUD is the board speed / 2
     (0x22DC0C), not a timer.
+22. A killed BreakLoop script leaves its frame-counter memcheck in PPSSPP:
+    the next script times out on `cpu.stepping`. Remove the memcheck
+    (`remove_mem_breakpoint(base + frame_counter)`) and resume. During the
+    LEVEL_22 race, `buttons(up=True)` did not reach the D-pad double-tap
+    detector 0x1056E8 (its state never changed, 2026-10-23); check the pad
+    word 0x90F38 before relying on D-pad input there.
+
+LEVEL_22 native fix candidates (`C1+tapwin`, `C1+racecount`,
+`C1+boardtimers`, levels.py `NATIVE`) and their first measurements:
+[research/live-tests/2026-10-23-skyboard-finish/REPORT.md](../../research/live-tests/2026-10-23-skyboard-finish/REPORT.md).
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.
