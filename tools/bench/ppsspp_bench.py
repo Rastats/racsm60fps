@@ -38,9 +38,11 @@ import time
 from pathlib import Path
 
 DEFAULT_ROOT = Path(os.environ.get('RACSM_ROOT', 'D:/racsm60fps'))
-DEFAULT_INSTANCE = DEFAULT_ROOT / 'emu/ppsspp-1'
+# RACSM_INSTANCE / RACSM_PORT let parallel benches each own one instance
+# (emu/ppsspp-N, debugger port 60906+N); scripts that import the defaults follow.
+DEFAULT_INSTANCE = Path(os.environ.get('RACSM_INSTANCE', DEFAULT_ROOT / 'emu/ppsspp-1'))
 DEFAULT_ISO = DEFAULT_ROOT / 'game/UCES00420.iso'
-DEFAULT_PORT = 60907
+DEFAULT_PORT = int(os.environ.get('RACSM_PORT', '60907'))
 TIMEOUT_S = 20.0
 
 

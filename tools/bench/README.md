@@ -38,6 +38,13 @@ The instance is portable because `installed.txt` is absent, so the owner's
 debugger on port 60907, disables plugins and cheats, mutes the game and uses
 Direct3D 11. The graphics backend does not change game logic.
 
+Parallel benches: give each one its own instance (`emu/ppsspp-N`, port
+`60906+N`, set up with `--dest`/`--port` as above) and export
+`RACSM_INSTANCE=<root>/emu/ppsspp-N RACSM_PORT=60906+N` before any tool.
+Every script that imports `DEFAULT_INSTANCE`/`DEFAULT_PORT` from
+`ppsspp_bench.py` follows, including the research scripts that have no
+`--port` flag. Keep run ids unique per bench under `work/runs/`.
+
 ## Tools
 
 | Tool | What it does |
