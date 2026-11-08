@@ -5,6 +5,8 @@ Status: working, 2026-10-19. First unattended A/B/C measurement reproduced
 2026-10-20: double jump, R + jump and the camera fix measured; damage and
 elevator blocked on locating a crab and the elevator
 ([session-2026-10-20-bench/REPORT.md](../../research/live-tests/pokitaru/session-2026-10-20-bench/REPORT.md)).
+2026-10-22: crab and elevator located and measured
+([research/static/2026-10-22-ghidra-crab-elevator/REPORT.md](../../research/static/2026-10-22-ghidra-crab-elevator/REPORT.md)).
 
 Goal: let an agent run PPSSPP instances, look at the screen, drive the
 controller, apply fixes and measure A0 / C1 / C candidates **without the owner
@@ -61,7 +63,8 @@ Every script that imports `DEFAULT_INSTANCE`/`DEFAULT_PORT` from
 | `move_probe.py` | walk / jump / double jump (`--gaps`) / R + jump trajectories per config, frame-locked scripts, `--angles` scan |
 | `move_compare.py` | position difference and heading per 2 vblanks against A0, C-configs shifted one vblank |
 | `damage_probe.py` | health and post-hit suppression writes by breakpoint: hit times, HP lost, suppression duration |
-| `entities.py` | pump-1 entity positions nearest first; `teleport` test aid |
+| `entities.py` | pump-1 entity positions and states nearest first; `teleport` test aid (all position copies) |
+| `elevator_probe.py` | Pokitaru elevator: `ride` (step, updates/s, ride time per config), `preinit` (apply a config at the initializer from a cold boot) |
 | `level_route.py` | reach another level from boot: redirects the LEVEL_01 module path in RAM, then presses through the frontend |
 | `level_port.py` | ports LEVEL_01 RVAs (C1 core, data addresses, `fixes.DATA`) to another level PRX by masked byte matching, offline |
 | `levels.py` | per-level profile keyed by `rcp1` size; `wordfix`, `breakloop`, `clock`, `move_probe`, `fire_rate` use it |
@@ -237,6 +240,27 @@ LEVEL_22 native fix candidates (`C1+tapwin`, `C1+racecount`,
 [research/live-tests/2026-10-23-skyboard-finish/REPORT.md](../../research/live-tests/2026-10-23-skyboard-finish/REPORT.md).
 Race AI speed (`C1+aimove`, optional `C1+aiphys`) and the saved race time
 (`C1+racetime`, stored in A0 frames so Best Times reads right): [research/live-tests/2026-10-24-skyboard-ai/REPORT.md](../../research/live-tests/2026-10-24-skyboard-ai/REPORT.md).
+
+## Crab and elevator (2026-10-22, Ghidra branch)
+
+25. Class names are in `research/v2/decomp-summary/level01-class-updates.json`
+    (class -> pump-1 update = group callback): Crab `0x126F28`,
+    Lvl3Elevator `0x156710`. Crabs stay idle until the player enters their
+    territory; state `ghidra-crab` puts Ratchet where crabs 6-8 attack.
+26. Writing only the player's `+0x30` keeps x/z but not y: the game rebuilds
+    it from position copies (`+0x70`, `+0x26C`, `+0x338`, `+0xA88`, y at
+    `+0x2D0/+0x2D4`), Ratchet falls through the ground and respawns.
+    `entities.teleport()` writes them all (2026-10-22).
+27. Probes take `--instance` with `--port`: until 2026-10-22 `damage_probe`,
+    `abc_fire` and `move_probe` loaded states into the default instance
+    (`ppsspp-1`) whatever the port, so a second instance measured a state
+    loaded elsewhere.
+28. Riding the Pokitaru elevator to the top ends the level: cutscene at
+    progress 0.74, new module (`rcp1` size 0x484B00), and a save file appeared
+    in the instance's memstick then. Keep `elevator_probe.py ride` short (3 s) and
+    move such saves aside before a "new game" boot. The elevator initializer
+    also runs on respawn: `elevator_probe.py preinit --state ghidra-crab
+    --buttons ''` applies a config before it without a cold boot.
 
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.
