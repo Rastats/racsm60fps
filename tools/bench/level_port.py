@@ -19,6 +19,13 @@ the extracted PRX files, by masked byte matching:
 A site is accepted only when its match is unique and its original word is
 identical. Anything else is reported as not ported, never guessed.
 
+Init-computed data words (2026-11-08): a `fixes.DATA` data word that is 0 in
+the LEVEL_01 file but nonzero in its original is written by the game at init
+(the 20 camera filter k = omega x 1/30 of `camfilters`, computed by 0xCA24).
+Its site is ported like any data word, the target file must also hold 0 there,
+and the entry is marked `runtime`: the file cannot confirm the original, so the
+only guard is the one `wordfix.py` applies to the live word in RAM.
+
 Validated 2026-10-22 against the owner's per-level cheat files
 (cheats/eu/base/LEVEL_0x_*.ini): the three C1 core words and the player
 struct implied by the EU health cheats.
@@ -230,12 +237,15 @@ def port_level(target, src_name='LEVEL_01'):
         r = port_address(src, dst, rva)
         out['addresses'][name] = {k: (hex(v) if k == 'rva' and v is not None else v) for k, v in r.items()}
     for name, (rva, orig, new) in sorted(load_fixes_data().items()):
-        if src.word(rva) != orig:
+        runtime = not src.is_code(rva) and src.word(rva) == 0 and orig != 0
+        if src.word(rva) != orig and not runtime:
             out['fixes'][name] = {'rva': None, 'why': 'LEVEL_01 word differs from fixes.DATA original'}
             continue
         r = port_code(src, dst, rva) if src.is_code(rva) else port_data(src, dst, rva)
-        if r['rva'] is not None and dst.word(r['rva']) != orig:
+        if r['rva'] is not None and dst.word(r['rva']) != src.word(rva):
             r = {'rva': None, 'why': 'matched site holds another word'}
+        elif r['rva'] is not None and runtime:
+            r['runtime'] = True       # init-computed: original checked in RAM by wordfix only
         out['fixes'][name] = {k: (hex(v) if k == 'rva' and v is not None else v) for k, v in r.items()}
         out['fixes'][name]['kind'] = 'code' if src.is_code(rva) else 'data'
     return out

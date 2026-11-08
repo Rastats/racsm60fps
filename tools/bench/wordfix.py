@@ -88,7 +88,7 @@ def core_words(base, prof):
 def apply(d, core, fixes):
     mod = d.module('rcp1')
     base = mod['address']
-    want = {}
+    want, runtime = {}, set()
     if mod['size'] == LEVEL01_SIZE:
         fixes = expand(fixes)
         exp = pg.expected(base, core)
@@ -104,12 +104,16 @@ def apply(d, core, fixes):
         for rva, (w_a0, w_c1) in core_words(base, prof).items():
             want[rva] = ({w_a0, w_c1}, w_c1 if core == 'C1' else w_a0)
         table = prof['fixes']
+        runtime = prof.get('runtime', set())
         missing = fixes - set(table)
         if missing:
             raise BenchError(f'{prof["stem"]}: fixes not ported from LEVEL_01: {sorted(missing)}')
+    soft = set()
     for name in table:
         rva, orig, new = table[name]
         want[rva] = ({orig, new}, new if name in fixes else orig)
+        if name in runtime and name not in fixes:
+            soft.add(rva)
     writes, refresh = [], 0
     if not d.cpu().get('stepping'):    # already stopped (e.g. at a breakpoint): no ack would come
         d.pause()
@@ -121,6 +125,8 @@ def apply(d, core, fixes):
             if 0 in allowed and not fx._RAW.exists():
                 raise BenchError(f'fix at +0x{rva:X} has no known original word: reference PRX missing ({fx._RAW})')
             if old not in allowed:
+                if rva in soft:
+                    continue      # init-computed word of an unselected fix, not (yet) written by the game
                 raise BenchError(f'unexpected word at +0x{rva:X}: 0x{old:08X}')
             if old != value:
                 plan.append((rva, old, value))
