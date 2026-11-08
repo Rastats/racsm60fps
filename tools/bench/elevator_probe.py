@@ -129,7 +129,7 @@ def cmd_ride(a):
     for config in a.configs:
         core, *fixes = config.split('+')
         if not a.live:
-            states.load(a.state, a.instance)
+            states.load(a.state, a.instance, port=a.port)
             time.sleep(a.settle)
         with Debugger(a.port).connect() as d:
             d.release_all()
@@ -148,7 +148,7 @@ def cmd_preinit(a):
     bp = LEVEL01_BASE + INIT
     log = {'config': a.config, 'breakpoint': hex(bp), 'presses': 0, 'foreignHits': 0, 'state': a.state}
     if a.state:                       # respawn route: a state where Ratchet dies (ghidra-crab)
-        states.load(a.state, a.instance)
+        states.load(a.state, a.instance, port=a.port)
         time.sleep(1.0)
     with Debugger(a.port).connect() as d:
         d.add_cpu_breakpoint(bp)

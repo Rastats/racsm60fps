@@ -129,7 +129,7 @@ def main():
     results = []
     for config in a.configs:
         core, *fixes = config.split('+')
-        states.load(a.state, a.instance)
+        states.load(a.state, a.instance, port=a.port)
         time.sleep(a.settle)
         with Debugger(a.port).connect() as d:
             d.release_all()

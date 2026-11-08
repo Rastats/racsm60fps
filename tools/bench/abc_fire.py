@@ -53,7 +53,7 @@ def main():
     for rep in range(a.repeat):
         for config in a.configs:
             core, fixes = parse(config)
-            states.load(a.state, a.instance)
+            states.load(a.state, a.instance, port=a.port)
             time.sleep(a.settle)
             with Debugger(a.port).connect() as d:
                 d.release_all()

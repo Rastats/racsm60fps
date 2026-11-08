@@ -190,7 +190,7 @@ def main():
         for angle, gap, config in itertools.product(a.angles, gaps, a.configs):
             spec = script(a.script, gap or 20)
             core, *fixes = config.split('+')
-            states.load(a.state, a.instance)
+            states.load(a.state, a.instance, port=a.port)
             time.sleep(a.settle)
             with Debugger(a.port).connect() as d:
                 d.release_all()
