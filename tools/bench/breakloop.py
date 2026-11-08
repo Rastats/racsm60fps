@@ -102,7 +102,8 @@ class BreakLoop:
         addrs = list(self.watches) + ([fc] if self.frame_cb else [])
         span = int(seconds * CPU_HZ)
         wall_limit = wall_limit or max(60.0, seconds * 40)
-        d.pause()                              # stop first, so no event fires before t_start
+        if not d.cpu().get('stepping'):       # already stopped: e.g. states.load(pause=True)
+            d.pause()                          # stop first, so no event fires before t_start
         stepping = True
         try:
             for a in addrs:
@@ -110,6 +111,9 @@ class BreakLoop:
             t_start = t = int(d.cpu()['ticks'])
             if self.frame_cb:                  # inputs for the first frame, set while stopped
                 self.frame_cb(t, None)
+            # A cpu.stepping broadcast from before t_start (the pause of a paused quick load reached
+            # this connection late, 2026-11-08) is not a break: drop queued ones, skip late ones below.
+            d.events = [m for m in d.events if m.get('event') != 'cpu.stepping']
             d.resume_quiet()
             stepping = False
             deadline = time.monotonic() + wall_limit
@@ -117,6 +121,8 @@ class BreakLoop:
                 if time.monotonic() > deadline:
                     raise BenchError(f'wall-clock limit {wall_limit:.0f} s reached before {seconds} emulated s')
                 ev = d.wait_event('cpu.stepping', timeout=1.0)
+                if ev is not None and int(ev['ticks']) <= t_start:
+                    continue                   # stale: the CPU has not run since t_start
                 if ev is None:                 # no event for a while: check the clock
                     st = d.cpu()
                     if int(st['ticks']) - t_start >= span:
@@ -125,6 +131,9 @@ class BreakLoop:
                         t = int(d.cpu()['ticks'])
                         break
                     if not st.get('stepping'):
+                        continue
+                    if int(st['ticks']) <= t_start:
+                        d.resume_quiet()       # the resume crossed a stale stop: resume again
                         continue
                     # Stopped without a cpu.stepping event reaching us: handle the break from the
                     # status, else the loop idles until the wall limit (OBSERVED 2026-10-23, a
