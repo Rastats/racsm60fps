@@ -262,5 +262,19 @@ Race AI speed (`C1+aimove`, optional `C1+aiphys`) and the saved race time
     also runs on respawn: `elevator_probe.py preinit --state ghidra-crab
     --buttons ''` applies a config before it without a cold boot.
 
+## Heading overshoot and camera filters (2026-11-08)
+
+29. The sideways-walk heading overshoot of C1 (about 6 deg after 1 s at
+    ±90 deg) comes from the 20 camera filters, not from a player routine:
+    the stick is read relative to the camera yaw, and the filters still
+    carry dt = 1/30 per call while the camera runs once per frame.
+    `C1+camfilters` restores A0 (report:
+    [research/live-tests/2026-11-08-heading-fix/REPORT.md](../../research/live-tests/2026-11-08-heading-fix/REPORT.md)).
+30. Init-computed words do not port by file content: the 20 camfilters k
+    words are 0 in every PRX and written at init (`0xCA24`). `level_port.py`
+    ports their site, marks them `runtime`, and `wordfix.py` guards them in
+    RAM only when the fix is selected (an unselected, not yet written k is
+    skipped instead of refused). Offline check: `test_runtime_port.py`.
+
 These belong in `research/GOTCHAS.md` (local research branch) when it is
 merged.

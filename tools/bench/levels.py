@@ -14,6 +14,8 @@ A profile holds:
                           sites ported with an identical original word only,
                           plus the level's own candidates (NATIVE below)
   native                  {group: [names in fixes]} of those candidates
+  runtime                 names in fixes whose original is computed at init
+                          (0 in the file, level_port.py), e.g. camfilters k
 
 How the bench reaches a level other than Pokitaru (2026-10-22): the main module
 keeps a table of 40-byte paths `disc0:/PSP_GAME/USRDIR/BIN/LEVEL_NN.PRX`
@@ -121,12 +123,15 @@ def _ported(stem):
     spec = importlib.util.spec_from_file_location('fixes', HERE.parents[1] / 'tools/runtime/fixes.py')
     fx = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fx)
+    prof['runtime'] = set()
     for name, r in out['fixes'].items():
         if r['rva'] is None:
             prof['unported'][name] = r.get('why')
         else:
             _rva, orig, new = fx.DATA[name]
             prof['fixes'][name] = (int(r['rva'], 16), orig, new)
+            if r.get('runtime'):
+                prof['runtime'].add(name)     # init-computed (level_port.py): guarded in RAM only when selected
     prof['native'] = {}
     for group, words in NATIVE.get(stem, {}).items():
         for rva, orig, new in words:
