@@ -234,12 +234,27 @@ Report: [research/live-tests/2026-10-23-skyboard/REPORT.md](../../research/live-
     are not readable for up to a few seconds (`Invalid address`, then a
     missing callback group). Wait for the groups you need before reading
     entities (`rec.py`, 2026-10-24).
+29. A quick load can silently not happen, and a quick save posted while the
+    game runs lands seconds after the wanted instant (2026-11-08: a "pre-climb"
+    save ~7 s late, a run that started from the previous state). `states.save`
+    now writes `<name>.json` with the CPU ticks around the save (call it with
+    the stopped Debugger from a frame break for an exact instant) and
+    `states.load` raises unless the emulated clock jumps to the saved ticks.
+    `states.load(pause=True)` (used by `rec.py`) stops the CPU first and leaves
+    it stopped at the loaded instant, so the first recorded frame is the saved
+    one: a running load let the game ride ~6 s unpiloted before the script
+    started. PPSSPP processes the quick load while stepping.
+30. After a paused quick load, a late `cpu.stepping` broadcast can reach the
+    next connection and look like a break at a non-store PC ("is not a
+    store"). `BreakLoop.run` drops stepping events whose ticks are not past
+    its start tick.
 
 LEVEL_22 native fix candidates (`C1+tapwin`, `C1+racecount`,
 `C1+boardtimers`, levels.py `NATIVE`) and their first measurements:
 [research/live-tests/2026-10-23-skyboard-finish/REPORT.md](../../research/live-tests/2026-10-23-skyboard-finish/REPORT.md).
 Race AI speed (`C1+aimove`, optional `C1+aiphys`) and the saved race time
 (`C1+racetime`, stored in A0 frames so Best Times reads right): [research/live-tests/2026-10-24-skyboard-ai/REPORT.md](../../research/live-tests/2026-10-24-skyboard-ai/REPORT.md).
+Speed/slow volumes and the climb floor (`C1+slope`): [research/live-tests/2026-11-08-skyboard-slope-fix/REPORT.md](../../research/live-tests/2026-11-08-skyboard-slope-fix/REPORT.md).
 
 ## Crab and elevator (2026-10-22, Ghidra branch)
 

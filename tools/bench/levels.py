@@ -85,6 +85,18 @@ NATIVE = {
                      (0x106870, 0x00A4202B, 0x00063042), (0x106874, 0x10800005, 0x00C4202B),
                      (0x106878, 0x00000000, 0x10800004), (0x106880, 0x922500B1, 0x00042042),
                      (0x24061C, 0x45C03000, 0x46403000)],
+        # Board speed spring 0xDAC4 (v = k(T - x) - 0.2 v, x += v; x = player+0x230, once per substep, no
+        # delta). Its target block 0x4A190 brakes (T = 0.3 t, or t - 0.2333) or accelerates (T = t + 0.2667)
+        # with k = 0.1 when 0x476D8 sees the event G+0x159, set once per frame by the speed/slow volume
+        # entities (0xF14E0 / 0xF14F0) and cleared by the substep that uses it: in A0 one substep of two
+        # brakes, in C1 every one, so the climb floor is T = 0.1 (HUD 3.00) against an A0 cycle mean of
+        # 0.137 (HUD 4.1). Data words read only there (checked): k 0x222324 (0x4A3A0, 0x4A440), brake
+        # term 0x22231C (0x4A410, 0x4A430), accelerate term 0x222318 (0x4A390), refitted so one C1 substep
+        # has the A0 cycle's steady state and first-second distance (springsim.py, 2026-11-08: steady
+        # state equal, distance over 1 s within 0.1 %). The same words also serve ground surface types 3/5
+        # (G+0x158, per substep, already right in C1): a course with such ground would drift from A0 there.
+        'slope': [(0x222324, 0x3DCCCCCD, 0x3D8068DC), (0x22231C, 0xBE6EEEF0, 0xBE48CE3A),
+                  (0x222318, 0x3E888889, 0x3E657DEA)],
         'aiphys': [(0x2409D8, 0x3F1C61AB, 0x3E9C61AB), (0x2409B8, 0x3DB60B62, 0x3D360B62),
                    (0x2409C0, 0x3CA3D70A, 0x3C24AAE1),
                    (0x2409C4, 0x3D23D70A, 0x3CA58313), (0x240AB8, 0x3DCCCCCD, 0x3D523176),
