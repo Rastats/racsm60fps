@@ -11,7 +11,7 @@ variants: [A0, C1+boardtimers+racecount+aimove+racetime, C1+boardtimers+racecoun
 environment: "Bench instance emu/ppsspp-1, port 60907 (PPSSPP 1.20.4), worktree wt-slopefix; offline reading of LEVEL_22.PRX (capstone)"
 supersedes: [research/live-tests/2026-10-24-skyboard-slope/REPORT.md]
 related: [research/live-tests/2026-10-24-skyboard-ai/REPORT.md, research/live-tests/2026-10-23-skyboard/REPORT.md, tools/bench/levels.py]
-summary: "Cause: the speed/slow volume entities set a brake/accelerate event once per frame and the board speed spring (0xDAC4, per substep, no delta) uses it on the next substep only; A0 brakes on 1 substep of 2, C1 on every one, hence the climb floor HUD 3.00. Fix `NATIVE['LEVEL_22']['slope']`: 3 data words (k 0x222324, brake 0x22231C, accelerate 0x222318) refitted by simulation. Full race C1+fix+slope look 14: climb 2.17 s on 3 laps of 3 (A0 2.10-2.33, C1+fix 2.83), HUD min 4.14, race won (Best Times 3 : 15). board_probe straight / right turn identical, left turn closer to A0. Trade-off: one brake-ground patch (surface type 3) shares the words, estimated +0.18 s per lap for the player."
+summary: "Cause: the speed/slow volume entities set a brake/accelerate event once per frame and the board speed spring (0xDAC4, per substep, no delta) uses it on the next substep only; A0 brakes on 1 substep of 2, C1 on every one, hence the climb floor HUD 3.00. Fix `NATIVE['LEVEL_22']['slope']`: 3 data words (k 0x222324, brake 0x22231C, accelerate 0x222318) refitted by simulation. Full race C1+fix+slope look 14: climb 2.17 s on 3 laps of 3 (A0 2.10-2.33, C1+fix 2.83), HUD min 4.14, race won (Best Times 3 : 15). board_probe straight / right turn identical, left turn closer to A0 at 4.0 s, 2.5 u behind A0 at 4.9 s where the lines have split on heading (INFERRED). Trade-off: one brake-ground patch (surface type 3) shares the words, estimated +0.18 s per lap for the player."
 state: "work/states/slopefix-c1-climb (+ .json sidecar): C1+fix, 1 s before the climb, saved while stopped at a frame break"
 ---
 
@@ -20,7 +20,7 @@ state: "work/states/slopefix-c1-climb (+ .json sidecar): C1+fix, 1 s before the 
 1. **Cause (OBSERVED):** speed/slow volumes set an event once per frame; the per-substep speed spring uses it on one substep. A0 brakes on 1 substep of 2, C1 on all, so C1 floors at HUD 3.00 on the climb.
 2. **Fix:** `C1+slope`, three data words of the spring's target block refitted so one C1 substep equals an A0 pair (`scripts/springsim.py`).
 3. **Result (OBSERVED, full race look 14):** climb 2.17 s on 3 laps of 3 (A0 2.10-2.33, C1+fix 2.83), HUD minimum 4.14, race won (« Learner's Permit 3 : 15 »).
-4. **Non-regression:** `board_probe` straight and right turn identical; left turn moves toward A0.
+4. **Non-regression:** `board_probe` straight and right turn identical; left turn closer to A0 at 4.0 s, 2.5 u behind at 4.9 s once the lines split on heading (INFERRED).
 5. **Trade-off (ESTIMATED):** one LEVEL_22 brake-ground patch shares the words: about +0.18 s per lap for the player. Bench: paused state loads (README pitfalls 29-30).
 
 ## 1. Cause (OBSERVED)
@@ -90,7 +90,7 @@ Because the words are shared with the ground class path, ground of surface type 
 A0 under C1+slope (on a long stretch it would brake to HUD 4.1 where A0 brakes to 3.0). LEVEL_22 has
 one such patch (OBSERVED, `slopefix-race-c1slope` with a change-only watch on G+0x158,
 `scripts/surfaces.py`): brake ground (class 2, writer 0x4ADBC / 0x4AB10) at (-21, 13.7, -126), 9-10
-vblanks per lap, entered at HUD 11.2; no accelerate ground (class 1) in the race. Simulated cost
+vblanks per lap, entered at HUD 11.2; no accelerate ground (class 1) on the autopilot's line. Simulated cost
 (`springsim.py`, 10 brake-ground substeps, entry HUD 7.8 / 12.0): C1+slope covers +2.6 / +4.0 u
 more than A0 over the next 3 s, i.e. about +8 / +12 vblanks, so roughly 0.18 s per lap and 0.55 s per
 race in the player's favour (ESTIMATED, not measured). Removing it needs a code change that picks
@@ -123,7 +123,7 @@ climb box x 100-120, z -118..-103, times from GO (`scripts/climb.py`):
 - Climb in the A0 range on 3 laps of 3, HUD 3.00 floor gone (minimum 4.14, A0 4.07-4.10) (OBSERVED).
 - Race won (OBSERVED, `work/runs/slopefix-race-c1slope/fin-v16638.png`): « Best Times: Learner's
   Permit 3 : 15 », « Prize: Bolts: 750 ». raceFrames froze at 11707 (195.1 s at 60/s; the menu
-  shows A0 units through `racetime`). The continuous C1+fix race of 2026-10-24 was lost.
+  shows A0 units through `racetime`).
 - Splits (`scripts/splits.py`, last point of AI 0's line): C1+slope 195.7 s, C1+fix 209.6 s, A0
   202.5 s. Respawn events (rec.py): A0 2 (107.0 and 113.0 s from GO), C1+fix 3, C1+slope 0, so
   the 7 s ahead of A0 comes mostly from respawns, not from a speed excess of the fix (INFERRED; the
@@ -145,7 +145,7 @@ climb box x 100-120, z -118..-103, times from GO (`scripts/climb.py`):
 - Straight and right turn: identical with and without `slope`, every metric (no volume on those lines).
 - Left turn: the line crosses a speed volume between 3.0 and 4.0 s. There `slope` brings C1 back
   toward A0 (gap at 4.0 s +2.85 u -> +1.00 u). By 4.9 s the A0 and C1 lines have split on heading
-  (151-156° in A0 against 144-147° in C1 from 3.0 s, the heading gap handled by the sister session
+  (151-156° in A0 against 144-147° in C1 from 3.0 s; at 4.9 s C1+slope is 2.54 u behind A0 and C1+fix 0.95 u ahead; INFERRED: the heading gap handled by the sister session
   « rotation de 7° en trop »), so 4.9 s does not compare the speed term.
 
 ## Files

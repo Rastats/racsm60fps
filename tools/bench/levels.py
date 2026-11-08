@@ -94,7 +94,8 @@ NATIVE = {
         # term 0x22231C (0x4A410, 0x4A430), accelerate term 0x222318 (0x4A390), refitted so one C1 substep
         # has the A0 cycle's steady state and first-second distance (springsim.py, 2026-11-08: steady
         # state equal, distance over 1 s within 0.1 %). The same words also serve ground surface types 3/5
-        # (G+0x158, per substep, already right in C1): a course with such ground would drift from A0 there.
+        # (G+0x158, per substep, already right in C1), which then drift from A0: LEVEL_22 has one brake
+        # patch at (-21, 13.7, -126), 9-10 vblanks per lap, estimated +0.18 s per lap for the player.
         'slope': [(0x222324, 0x3DCCCCCD, 0x3D8068DC), (0x22231C, 0xBE6EEEF0, 0xBE48CE3A),
                   (0x222318, 0x3E888889, 0x3E657DEA)],
         'aiphys': [(0x2409D8, 0x3F1C61AB, 0x3E9C61AB), (0x2409B8, 0x3DB60B62, 0x3D360B62),
